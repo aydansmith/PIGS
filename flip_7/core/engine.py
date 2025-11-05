@@ -216,6 +216,11 @@ class GameEngine:
         if isinstance(card_from_deck, ActionCard):
             self._apply_action_card(player_id, card_from_deck)
 
+        # Check if round ended due to action card (e.g., FREEZE on last player)
+        # If so, skip remaining processing as round is already complete
+        if self.game_state.current_round is None:
+            return
+
         # Update scores
         self._update_player_score(player_id)
 
@@ -442,6 +447,10 @@ class GameEngine:
                 action_type=ActionType.FREEZE,
                 effect_description=f"{player_name} was frozen and banked {player_state.round_score} points"
             ))
+
+            # Check if round should end (fixes softlock when last player gets frozen)
+            if check_round_end_condition(self.game_state.current_round):
+                self.end_round()
 
         elif card.action_type == ActionType.FLIP_THREE:
             # Player must take next 3 cards
