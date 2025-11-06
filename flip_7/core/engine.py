@@ -201,6 +201,10 @@ class GameEngine:
             # If exact card not in deck, use the provided card (for manual override)
             card_from_deck = card
 
+        # Check if flip_three was active BEFORE dealing this card
+        # This ensures the FLIP_THREE card itself doesn't count toward the 3
+        flip_three_was_active = player_state.flip_three_active
+
         # Add card to player's hand
         player_state.cards_in_hand.append(card_from_deck)
 
@@ -239,7 +243,8 @@ class GameEngine:
             self._handle_player_bust(player_id)
 
         # Handle Flip Three counter - only decrement for non-action cards
-        if player_state.flip_three_active and player_state.flip_three_count > 0:
+        # Only check counter if flip_three was ALREADY active before this card
+        if flip_three_was_active and player_state.flip_three_count > 0:
             # Only decrement if the card dealt was NOT an action card
             if not isinstance(card_from_deck, ActionCard):
                 player_state.flip_three_count -= 1

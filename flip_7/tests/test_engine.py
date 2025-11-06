@@ -197,6 +197,95 @@ class TestCardDealing:
         assert player_state.flip_three_active is True
         assert player_state.flip_three_count == 3
 
+    def test_flip_three_requires_exactly_three_more_cards(self):
+        """Test that FLIP_THREE card doesn't count itself as one of the 3 cards."""
+        engine = GameEngine()
+        game_state = engine.start_new_game(["Alice", "Bob"])
+        engine.start_new_round()
+
+        player_id = game_state.players[0].player_id
+        player_state = game_state.current_round.player_states[player_id]
+
+        # Deal FLIP_THREE card
+        engine.deal_card_to_player(player_id, ActionCard(action_type=ActionType.FLIP_THREE))
+
+        # Should have 1 card in hand (the FLIP_THREE card itself)
+        assert len(player_state.cards_in_hand) == 1
+        assert player_state.flip_three_active is True
+        assert player_state.flip_three_count == 3, "Should require 3 MORE cards after FLIP_THREE"
+
+        # Deal first card - should decrement count
+        engine.deal_card_to_player(player_id, NumberCard(value=5))
+        assert len(player_state.cards_in_hand) == 2
+        assert player_state.flip_three_count == 2, "First card should decrement count to 2"
+
+        # Deal second card - should decrement count
+        engine.deal_card_to_player(player_id, NumberCard(value=7))
+        assert len(player_state.cards_in_hand) == 3
+        assert player_state.flip_three_count == 1, "Second card should decrement count to 1"
+
+        # Deal third card - should complete the flip three effect
+        engine.deal_card_to_player(player_id, NumberCard(value=3))
+        assert len(player_state.cards_in_hand) == 4, "Should have 4 total: FLIP_THREE + 3 number cards"
+        assert player_state.flip_three_active is False, "Effect should be complete after 3 cards"
+        assert player_state.flip_three_count == 0, "Count should be 0 after completing effect"
+
+    def test_flip_three_with_action_card_during_effect(self):
+        """Test that action cards drawn during FLIP_THREE don't count toward the 3."""
+        engine = GameEngine()
+        game_state = engine.start_new_game(["Alice", "Bob"])
+        engine.start_new_round()
+
+        player_id = game_state.players[0].player_id
+        player_state = game_state.current_round.player_states[player_id]
+
+        # Deal FLIP_THREE card
+        engine.deal_card_to_player(player_id, ActionCard(action_type=ActionType.FLIP_THREE))
+        assert player_state.flip_three_count == 3
+
+        # Deal an action card (SECOND_CHANCE) - should NOT count toward the 3
+        engine.deal_card_to_player(player_id, ActionCard(action_type=ActionType.SECOND_CHANCE))
+        assert player_state.flip_three_count == 3, "Action cards shouldn't count"
+        assert len(player_state.cards_in_hand) == 2
+
+        # Now deal 3 number cards
+        engine.deal_card_to_player(player_id, NumberCard(value=5))
+        assert player_state.flip_three_count == 2
+
+        engine.deal_card_to_player(player_id, NumberCard(value=7))
+        assert player_state.flip_three_count == 1
+
+        engine.deal_card_to_player(player_id, NumberCard(value=3))
+        assert player_state.flip_three_count == 0
+        assert player_state.flip_three_active is False
+        assert len(player_state.cards_in_hand) == 5, "Should have FLIP_THREE + SECOND_CHANCE + 3 numbers"
+
+    def test_flip_three_with_modifier_cards(self):
+        """Test that modifier cards count toward the 3 cards in FLIP_THREE."""
+        engine = GameEngine()
+        game_state = engine.start_new_game(["Alice", "Bob"])
+        engine.start_new_round()
+
+        player_id = game_state.players[0].player_id
+        player_state = game_state.current_round.player_states[player_id]
+
+        # Deal FLIP_THREE card
+        engine.deal_card_to_player(player_id, ActionCard(action_type=ActionType.FLIP_THREE))
+        assert player_state.flip_three_count == 3
+
+        # Deal a modifier card - SHOULD count toward the 3
+        engine.deal_card_to_player(player_id, ModifierCard(modifier_type=ModifierType.PLUS_2, value=2))
+        assert player_state.flip_three_count == 2, "Modifier cards should count"
+
+        # Deal a number card
+        engine.deal_card_to_player(player_id, NumberCard(value=5))
+        assert player_state.flip_three_count == 1
+
+        # Deal another modifier card
+        engine.deal_card_to_player(player_id, ModifierCard(modifier_type=ModifierType.MULTIPLY_2, value=0))
+        assert player_state.flip_three_count == 0
+        assert player_state.flip_three_active is False
+
     def test_deal_second_chance_card(self):
         """Test that dealing Second Chance card sets the flag."""
         engine = GameEngine()
