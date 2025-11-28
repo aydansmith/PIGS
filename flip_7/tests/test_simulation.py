@@ -12,6 +12,8 @@ from pathlib import Path
 
 from flip_7.simulation.strategy import BaseStrategy, StrategyContext
 from flip_7.simulation.strategies import RandomStrategy, ThresholdStrategy
+from flip_7.simulation.strategies.probability_threshold import ProbabilityThresholdStrategy
+from flip_7.simulation.strategies.adaptive_threshold import AdaptiveThresholdStrategy
 from flip_7.simulation.runner import SimulationRunner, SimulationResults
 from flip_7.simulation.exporter import SimulationExporter
 from flip_7.data.models import NumberCard, GameState
@@ -565,3 +567,599 @@ class TestStrategyActionCardDecisions:
         # Should complete without errors
         assert results.total_games == 1
         assert len(results.game_results) == 1
+
+
+class TestProbabilityThresholdStrategy:
+    """Tests for ProbabilityThresholdStrategy."""
+
+    def test_initialization_with_valid_probability(self):
+        """Test strategy initialization with valid probability."""
+        strategy = ProbabilityThresholdStrategy(bust_probability_threshold=0.25)
+        assert strategy.bust_probability_threshold == 0.25
+        assert strategy.min_score_threshold == 20
+
+    def test_initialization_with_invalid_probability(self):
+        """Test strategy raises error with invalid probability."""
+        with pytest.raises(ValueError, match="must be between 0.0 and 1.0"):
+            ProbabilityThresholdStrategy(bust_probability_threshold=1.5)
+
+        with pytest.raises(ValueError, match="must be between 0.0 and 1.0"):
+            ProbabilityThresholdStrategy(bust_probability_threshold=-0.1)
+
+    def test_strategy_name_formatting(self):
+        """Test that strategy name formats probability as percentage."""
+        strategy = ProbabilityThresholdStrategy(bust_probability_threshold=0.15)
+        assert strategy.name == "ProbThreshold(15%)"
+
+        strategy2 = ProbabilityThresholdStrategy(bust_probability_threshold=0.25)
+        assert strategy2.name == "ProbThreshold(25%)"
+
+    def test_hits_with_low_bust_probability(self):
+        """Test strategy hits when bust probability is low."""
+        strategy = ProbabilityThresholdStrategy(bust_probability_threshold=0.20)
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        # Hand with one card (low bust probability)
+        visible_cards = [NumberCard(value=5), NumberCard(value=6), NumberCard(value=7)]
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=[NumberCard(value=5)],
+            my_round_score=40,
+            my_total_score=50,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[],
+            deck_stats=DeckStatistics(
+                cards_remaining=40,
+                cards_in_discard=0,
+                visible_cards=visible_cards
+            ),
+            round_number=1
+        )
+
+        decision = strategy.decide_hit_or_stay(context)
+        # Should hit because bust probability is low (only 0/40 cards are value 5 in remaining deck)
+        assert decision is True
+
+    def test_stays_with_high_bust_probability_and_sufficient_score(self):
+        """Test strategy stays when bust probability is high and has sufficient score."""
+        strategy = ProbabilityThresholdStrategy(
+            bust_probability_threshold=0.20,
+            min_score_threshold=20
+        )
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        # Hand with multiple cards, many duplicates visible
+        # Simulate having 2, 3, 4, 5 in hand
+        my_cards = [
+            NumberCard(value=2),
+            NumberCard(value=3),
+            NumberCard(value=4),
+            NumberCard(value=5)
+        ]
+
+        # Make remaining deck dangerous - lots of potential duplicates
+        visible_cards = [NumberCard(value=6)] * 3  # Only safe cards visible
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=my_cards,
+            my_round_score=50,  # Above min threshold
+            my_total_score=100,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[],
+            deck_stats=DeckStatistics(
+                cards_remaining=20,
+                cards_in_discard=0,
+                visible_cards=visible_cards
+            ),
+            round_number=1
+        )
+
+        decision = strategy.decide_hit_or_stay(context)
+        # Bust probability should be > 20% with 4 values in hand and only 20 cards left
+        # Should stay because probability is high and score is sufficient
+
+    def test_hits_despite_high_probability_if_score_too_low(self):
+        """Test strategy hits even with high bust probability if score is too low."""
+        strategy = ProbabilityThresholdStrategy(
+            bust_probability_threshold=0.15,
+            min_score_threshold=30
+        )
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        # Hand with cards creating high bust risk
+        my_cards = [
+            NumberCard(value=2),
+            NumberCard(value=3),
+            NumberCard(value=4)
+        ]
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=my_cards,
+            my_round_score=15,  # Below min threshold
+            my_total_score=50,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[],
+            deck_stats=DeckStatistics(
+                cards_remaining=10,  # Low cards remaining = high bust risk
+                cards_in_discard=0,
+                visible_cards=[]
+            ),
+            round_number=1
+        )
+
+        decision = strategy.decide_hit_or_stay(context)
+        # Should hit even though probability is high, because score too low
+        assert decision is True
+
+    def test_stays_when_already_won(self):
+        """Test strategy stays when total score >= 200 (already won)."""
+        strategy = ProbabilityThresholdStrategy(bust_probability_threshold=0.20)
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=[NumberCard(value=12)],
+            my_round_score=50,
+            my_total_score=210,  # Already won
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[],
+            deck_stats=DeckStatistics(
+                cards_remaining=40,
+                cards_in_discard=0,
+                visible_cards=[]
+            ),
+            round_number=1
+        )
+
+        decision = strategy.decide_hit_or_stay(context)
+        assert decision is False  # Should stay (already won)
+
+    def test_must_hit_with_flip_three_active(self):
+        """Test strategy must hit when Flip Three is active."""
+        strategy = ProbabilityThresholdStrategy(bust_probability_threshold=0.10)
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=[NumberCard(value=12)],
+            my_round_score=120,  # High score
+            my_total_score=150,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=True,  # Flip Three active
+            my_flip_three_count=2,  # Still need 2 more cards
+            opponents=[],
+            deck_stats=DeckStatistics(
+                cards_remaining=40,
+                cards_in_discard=0,
+                visible_cards=[]
+            ),
+            round_number=1
+        )
+
+        decision = strategy.decide_hit_or_stay(context)
+        assert decision is True  # Must hit regardless of probability
+
+    def test_second_chance_discards_most_recent(self):
+        """Test that second chance discards the most recently drawn card."""
+        strategy = ProbabilityThresholdStrategy()
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=[],
+            my_round_score=0,
+            my_total_score=0,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=True,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[],
+            deck_stats=DeckStatistics(cards_remaining=40, cards_in_discard=0, visible_cards=[]),
+            round_number=1
+        )
+
+        duplicates = [NumberCard(value=7), NumberCard(value=7)]
+        discarded = strategy.decide_second_chance_discard(context, 7, duplicates)
+
+        # Should discard the last one (most recent)
+        assert discarded == duplicates[-1]
+
+    def test_flip_three_targets_highest_score_opponent(self):
+        """Test Flip Three targets opponent with highest total score."""
+        strategy = ProbabilityThresholdStrategy()
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=[],
+            my_round_score=50,
+            my_total_score=100,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[
+                OpponentInfo("p2", "Bob", 180, 80, False, False, 3),  # Highest
+                OpponentInfo("p3", "Charlie", 120, 60, False, False, 2)
+            ],
+            deck_stats=DeckStatistics(cards_remaining=30, cards_in_discard=10, visible_cards=[]),
+            round_number=1
+        )
+
+        possible_targets = ["p1", "p2", "p3"]
+        target = strategy.decide_flip_three_target(context, possible_targets)
+
+        # Should target Bob (p2) with highest total score
+        assert target == "p2"
+
+    def test_flip_three_targets_self_when_no_opponents(self):
+        """Test Flip Three targets self when no opponents available."""
+        strategy = ProbabilityThresholdStrategy()
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=[],
+            my_round_score=50,
+            my_total_score=100,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[],
+            deck_stats=DeckStatistics(cards_remaining=30, cards_in_discard=10, visible_cards=[]),
+            round_number=1
+        )
+
+        possible_targets = ["p1"]
+        target = strategy.decide_flip_three_target(context, possible_targets)
+
+        # Should target self (no other choice)
+        assert target == "p1"
+
+    def test_freeze_self_with_high_probability_and_good_score(self):
+        """Test Freeze freezes self when bust probability high and have good score."""
+        strategy = ProbabilityThresholdStrategy(
+            bust_probability_threshold=0.20,
+            min_score_threshold=30
+        )
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        # Create high bust probability scenario with good score
+        my_cards = [
+            NumberCard(value=2),
+            NumberCard(value=3),
+            NumberCard(value=4),
+            NumberCard(value=5)
+        ]
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=my_cards,
+            my_round_score=60,  # Good score, above min threshold
+            my_total_score=100,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[
+                OpponentInfo("p2", "Bob", 150, 80, False, False, 3)
+            ],
+            deck_stats=DeckStatistics(
+                cards_remaining=15,  # Low remaining = high bust risk
+                cards_in_discard=0,
+                visible_cards=[]
+            ),
+            round_number=1
+        )
+
+        possible_targets = ["p1", "p2"]
+        target = strategy.decide_freeze_target(context, possible_targets)
+
+        # Should freeze self to bank good score with high bust risk
+        assert target == "p1"
+
+    def test_freeze_opponent_with_low_probability(self):
+        """Test Freeze targets opponent when bust probability is low."""
+        strategy = ProbabilityThresholdStrategy(
+            bust_probability_threshold=0.20,
+            min_score_threshold=30
+        )
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        # Low bust probability scenario
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=[NumberCard(value=5)],
+            my_round_score=40,
+            my_total_score=100,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[
+                OpponentInfo("p2", "Bob", 170, 90, False, False, 3),  # Highest
+                OpponentInfo("p3", "Charlie", 120, 60, False, False, 2)
+            ],
+            deck_stats=DeckStatistics(
+                cards_remaining=40,  # Many cards = low bust risk
+                cards_in_discard=0,
+                visible_cards=[]
+            ),
+            round_number=1
+        )
+
+        possible_targets = ["p1", "p2", "p3"]
+        target = strategy.decide_freeze_target(context, possible_targets)
+
+        # Should freeze opponent with highest total score (Bob = p2)
+        assert target == "p2"
+
+    def test_probability_strategy_in_simulation(self):
+        """Test that ProbabilityThresholdStrategy works in full simulation."""
+        strategies = [
+            ProbabilityThresholdStrategy(bust_probability_threshold=0.15),
+            ProbabilityThresholdStrategy(bust_probability_threshold=0.25),
+            ThresholdStrategy(target_score=100)
+        ]
+
+        runner = SimulationRunner(
+            strategies=strategies,
+            num_players=3,
+            seed=42,
+            verbose=False
+        )
+
+        results = runner.run_simulation(num_games=10)
+
+        # Should complete successfully
+        assert results.total_games == 10
+        assert len(results.strategy_stats) == 3
+
+        # All strategies should have played
+        for stats in results.strategy_stats.values():
+            assert stats.games_played == 10
+
+
+class TestAdaptiveThresholdStrategy:
+    """Tests for AdaptiveThresholdStrategy."""
+
+    def test_initialization(self):
+        """Test strategy initialization."""
+        strategy = AdaptiveThresholdStrategy(target_score=100, safe_probability_threshold=0.10)
+        assert strategy.target_score == 100
+        assert strategy.safe_probability_threshold == 0.10
+
+    def test_initialization_with_invalid_probability(self):
+        """Test strategy raises error with invalid probability."""
+        with pytest.raises(ValueError, match="must be between 0.0 and 1.0"):
+            AdaptiveThresholdStrategy(safe_probability_threshold=1.5)
+
+    def test_strategy_name_formatting(self):
+        """Test that strategy name formats correctly."""
+        strategy = AdaptiveThresholdStrategy(target_score=100, safe_probability_threshold=0.10)
+        assert strategy.name == "Adaptive_100@10%"
+
+    def test_continues_hitting_with_low_bust_probability(self):
+        """Test strategy continues hitting even above threshold when bust probability is low."""
+        strategy = AdaptiveThresholdStrategy(target_score=50, safe_probability_threshold=0.10)
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        # Hand with one card (low bust probability)
+        # Include a 5 in visible cards to reduce bust probability
+        # Value 5 has 5 cards total, we have 1, showing 1 = 3 remaining / 40 = 7.5% < 10%
+        visible_cards = [NumberCard(value=5), NumberCard(value=6), NumberCard(value=7)]
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=[NumberCard(value=5)],
+            my_round_score=60,  # ABOVE threshold (50)
+            my_total_score=100,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[],
+            deck_stats=DeckStatistics(
+                cards_remaining=40,
+                cards_in_discard=0,
+                visible_cards=visible_cards
+            ),
+            round_number=1
+        )
+
+        decision = strategy.decide_hit_or_stay(context)
+        # Should HIT even though above threshold, because bust probability is very low (7.5%)
+        assert decision is True
+
+    def test_uses_threshold_logic_with_moderate_bust_probability(self):
+        """Test strategy falls back to threshold logic when bust probability is not low."""
+        strategy = AdaptiveThresholdStrategy(target_score=50, safe_probability_threshold=0.10)
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        # Hand with multiple cards (moderate bust probability)
+        my_cards = [
+            NumberCard(value=2),
+            NumberCard(value=3),
+            NumberCard(value=4),
+            NumberCard(value=5)
+        ]
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=my_cards,
+            my_round_score=60,  # ABOVE threshold (50)
+            my_total_score=100,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[],
+            deck_stats=DeckStatistics(
+                cards_remaining=30,
+                cards_in_discard=0,
+                visible_cards=[]
+            ),
+            round_number=1
+        )
+
+        decision = strategy.decide_hit_or_stay(context)
+        # Should STAY because above threshold and bust probability not low enough
+        assert decision is False
+
+    def test_hits_below_threshold_regardless_of_probability(self):
+        """Test strategy hits when below threshold (normal threshold behavior)."""
+        strategy = AdaptiveThresholdStrategy(target_score=100, safe_probability_threshold=0.10)
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        # Hand with multiple cards (higher bust probability)
+        my_cards = [
+            NumberCard(value=2),
+            NumberCard(value=3),
+            NumberCard(value=4)
+        ]
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=my_cards,
+            my_round_score=40,  # BELOW threshold (100)
+            my_total_score=50,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[],
+            deck_stats=DeckStatistics(
+                cards_remaining=20,
+                cards_in_discard=0,
+                visible_cards=[]
+            ),
+            round_number=1
+        )
+
+        decision = strategy.decide_hit_or_stay(context)
+        # Should HIT because below threshold (standard behavior)
+        assert decision is True
+
+    def test_stays_when_already_won(self):
+        """Test strategy stays when total score >= 200."""
+        strategy = AdaptiveThresholdStrategy(target_score=100, safe_probability_threshold=0.10)
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=[NumberCard(value=5)],
+            my_round_score=50,
+            my_total_score=210,  # Already won
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=False,
+            my_flip_three_count=0,
+            opponents=[],
+            deck_stats=DeckStatistics(
+                cards_remaining=40,
+                cards_in_discard=0,
+                visible_cards=[]
+            ),
+            round_number=1
+        )
+
+        decision = strategy.decide_hit_or_stay(context)
+        assert decision is False
+
+    def test_must_hit_with_flip_three_active(self):
+        """Test strategy must hit when Flip Three is active."""
+        strategy = AdaptiveThresholdStrategy(target_score=50, safe_probability_threshold=0.10)
+
+        from flip_7.simulation.strategy import OpponentInfo, DeckStatistics
+
+        context = StrategyContext(
+            my_player_id="p1",
+            my_cards=[NumberCard(value=12)],
+            my_round_score=120,  # Well above threshold
+            my_total_score=150,
+            my_has_stayed=False,
+            my_is_busted=False,
+            my_has_second_chance=False,
+            my_flip_three_active=True,
+            my_flip_three_count=2,
+            opponents=[],
+            deck_stats=DeckStatistics(
+                cards_remaining=40,
+                cards_in_discard=0,
+                visible_cards=[]
+            ),
+            round_number=1
+        )
+
+        decision = strategy.decide_hit_or_stay(context)
+        assert decision is True
+
+    def test_adaptive_strategy_in_simulation(self):
+        """Test that AdaptiveThresholdStrategy works in full simulation."""
+        strategies = [
+            AdaptiveThresholdStrategy(target_score=100, safe_probability_threshold=0.10),
+            ThresholdStrategy(target_score=100),
+            RandomStrategy(seed=42)
+        ]
+
+        runner = SimulationRunner(
+            strategies=strategies,
+            num_players=3,
+            seed=42,
+            verbose=False
+        )
+
+        results = runner.run_simulation(num_games=10)
+
+        # Should complete successfully
+        assert results.total_games == 10
+        assert len(results.strategy_stats) == 3
+
+        # All strategies should have played
+        for stats in results.strategy_stats.values():
+            assert stats.games_played == 10

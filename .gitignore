@@ -1,6 +1,7 @@
 # Local game history persisted by Flip7Tracker
 flip7_state.json
 flip7_games/
+flip_7/notebooks/simulation_results/*
 
 # Python cache directories
 __pycache__/
