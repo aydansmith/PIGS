@@ -364,7 +364,14 @@ def _show_pending_action_card_dialog(game_state, engine):
                 opponent_targets = [(pid, pname) for pid, pname in eligible_targets if pid != owner_id]
 
                 if not opponent_targets:
-                    st.error("No eligible opponents to give Second Chance to!")
+                    st.info(f"No eligible opponents remain — {owner_name}'s extra Second Chance is discarded")
+                    try:
+                        engine.discard_action_card(action_card, owner_id)
+                        del st.session_state['pending_action_card']
+                        del st.session_state['action_card_owner']
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(f"Error: {e}")
                 else:
                     for target_id, target_name in opponent_targets:
                         if st.button(f"Give to {target_name}", key=f"sc_target_{target_id}"):

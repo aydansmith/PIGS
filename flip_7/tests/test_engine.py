@@ -706,6 +706,41 @@ class TestActionCardTargeting:
 
         assert bob_state.has_second_chance
 
+    def test_second_chance_discarded_when_no_eligible_opponent(self):
+        """Second Second Chance with no eligible opponent (all others stayed) is discarded."""
+        engine = GameEngine()
+        engine.start_new_game(["Alice", "Bob"])
+        engine.start_new_round()
+
+        alice_id = engine.game_state.players[0].player_id
+        bob_id = engine.game_state.players[1].player_id
+
+        # Give Alice first Second Chance
+        sc_card1 = ActionCard(action_type=ActionType.SECOND_CHANCE)
+        engine.deal_card_to_player(alice_id, sc_card1)
+        engine.apply_action_card_effect(sc_card1, alice_id, alice_id)
+
+        # Bob stays, leaving no eligible opponent for Alice's next Second Chance
+        engine.player_stay(bob_id)
+
+        # Deal second Second Chance to Alice
+        sc_card2 = ActionCard(action_type=ActionType.SECOND_CHANCE)
+        engine.deal_card_to_player(alice_id, sc_card2)
+
+        # Still cannot keep it herself
+        with pytest.raises(ValueError, match="already has a Second Chance"):
+            engine.apply_action_card_effect(sc_card2, alice_id, alice_id)
+
+        # With no eligible opponents, the card is discarded rather than stuck
+        engine.discard_action_card(sc_card2, alice_id)
+
+        game_state = engine.game_state
+        alice_state = game_state.current_round.player_states[alice_id]
+
+        assert alice_state.has_second_chance  # original Second Chance untouched
+        assert sc_card2 not in alice_state.cards_in_hand
+        assert sc_card2 in game_state.discard_pile
+
     def test_cannot_target_player_who_has_stayed(self):
         """Test that action cards cannot target players who have stayed."""
         engine = GameEngine()
@@ -923,6 +958,10 @@ class TestTurnOrder:
         # base = 1+2+3+4+5+6+7 = 28, flip_7_bonus = 15 → 43
         assert alice_state.round_score == 43
         assert game_state.round_history[0].end_reason.value == "flip_7"
+
+        # Regression: total_score must be banked exactly once, not double-counted
+        # by end_round()'s "players who didn't explicitly stay" loop.
+        assert alice_state.total_score == 43
 
     def test_random_draw_returns_card_from_deck(self):
         """Test that deal_card_to_player with no card argument draws from the deck."""
