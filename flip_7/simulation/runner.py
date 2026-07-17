@@ -367,9 +367,9 @@ class SimulationRunner:
                                 # Give to first available opponent (could make this strategic)
                                 target_id = opponent_targets[0]
                             else:
-                                # No opponents available - can't apply this Second Chance
-                                # This can happen if all opponents have already stayed/busted
-                                # Just skip applying it (card stays in hand but has no effect)
+                                # No opponents available (all have already stayed/busted) -
+                                # the extra Second Chance can't be assigned, so it's discarded.
+                                engine.discard_action_card(card, player_id)
                                 target_id = None
 
                     elif card.action_type == ActionType.FLIP_THREE:

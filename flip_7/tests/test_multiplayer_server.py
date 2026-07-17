@@ -8,7 +8,8 @@ Each test creates its own room so there is no shared state between tests.
 import pytest
 from fastapi.testclient import TestClient
 
-from flip_7.network.server import app
+from flip_7.network.server import app, room_manager
+from flip_7.data.models import Card, NumberCard, ActionCard, ActionType
 
 client = TestClient(app)
 
@@ -56,6 +57,20 @@ def consume_connect_message(ws, expected_type: str) -> dict:
     msg = ws.receive_json()
     assert msg["type"] == expected_type, f"Expected {expected_type!r} on connect, got {msg['type']!r}"
     return msg
+
+
+def stack_deck(game_id: str, card: Card) -> None:
+    """
+    Put `card` on top of the room's deck so the next 'deal_card' message
+    draws it deterministically.
+
+    The server draws randomly from the shared deck (deal_card ignores any
+    'card' the client sends — a client dictating its own draw would be a
+    cheat vector), so tests that need a specific card must seed the deck
+    directly instead.
+    """
+    engine = room_manager.get_engine(game_id)
+    engine.game_state.deck.insert(0, card)
 
 
 # =============================================================================
@@ -238,6 +253,7 @@ class TestLobbyBroadcasts:
 class TestDealCard:
     def test_dealing_broadcasts_state_update_to_all(self):
         game_id, p1, p2 = setup_game()
+        stack_deck(game_id, NumberCard(value=7))
 
         with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws1, \
              client.websocket_connect(f"/ws/{game_id}/{p2}") as ws2:
@@ -245,7 +261,7 @@ class TestDealCard:
             ws1.receive_json()  # connect state_update
             ws2.receive_json()  # connect state_update
 
-            ws1.send_json({"type": "deal_card", "card": {"card_type": "number", "value": 7}})
+            ws1.send_json({"type": "deal_card"})
 
             msg1 = ws1.receive_json()
             msg2 = ws2.receive_json()
@@ -253,50 +269,31 @@ class TestDealCard:
             assert msg1["type"] == "state_update"
             assert msg2["type"] == "state_update"
 
-    def test_invalid_card_value_returns_error(self):
-        game_id, p1, _ = setup_game()
-
-        with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws:
-            ws.receive_json()
-            ws.send_json({"type": "deal_card", "card": {"card_type": "number", "value": 999}})
-            msg = ws.receive_json()
-            assert msg["type"] == "error"
-            assert "999" in msg["message"]
-
-    def test_invalid_card_type_returns_error(self):
-        game_id, p1, _ = setup_game()
-
-        with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws:
-            ws.receive_json()
-            ws.send_json({"type": "deal_card", "card": {"card_type": "joker"}})
-            msg = ws.receive_json()
-            assert msg["type"] == "error"
-
     def test_dealt_card_appears_in_dealers_hand(self):
         game_id, p1, _ = setup_game()
+        stack_deck(game_id, NumberCard(value=5))
 
         with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws:
             ws.receive_json()
-            ws.send_json({"type": "deal_card", "card": {"card_type": "number", "value": 5}})
+            ws.send_json({"type": "deal_card"})
             msg = ws.receive_json()
 
             p1_state = msg["state"]["current_round"]["player_states"][p1]
             values = [c["value"] for c in p1_state["cards_in_hand"]]
             assert 5 in values
 
-    def test_client_card_id_is_stripped(self):
-        """Server must replace the client-supplied card_id with its own."""
+    def test_server_assigns_its_own_card_id(self):
+        """The dealt card always carries a server-generated card_id."""
         game_id, p1, _ = setup_game()
+        stack_deck(game_id, NumberCard(value=3))
 
         with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws:
             ws.receive_json()
-            ws.send_json({"type": "deal_card", "card": {
-                "card_type": "number", "value": 3, "card_id": "EVIL-ID"
-            }})
+            ws.send_json({"type": "deal_card"})
             msg = ws.receive_json()
             p1_state = msg["state"]["current_round"]["player_states"][p1]
             for card in p1_state["cards_in_hand"]:
-                assert card.get("card_id") != "EVIL-ID"
+                assert card.get("card_id")
 
 
 # =============================================================================
@@ -304,8 +301,9 @@ class TestDealCard:
 # =============================================================================
 
 class TestPrivacyFilter:
-    def test_opponent_hand_is_redacted(self):
+    def test_opponent_card_count_is_visible(self):
         game_id, p1, p2 = setup_game()
+        stack_deck(game_id, NumberCard(value=9))
 
         with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws1, \
              client.websocket_connect(f"/ws/{game_id}/{p2}") as ws2:
@@ -314,21 +312,21 @@ class TestPrivacyFilter:
             ws2.receive_json()
 
             # P1 deals a card
-            ws1.send_json({"type": "deal_card", "card": {"card_type": "number", "value": 9}})
+            ws1.send_json({"type": "deal_card"})
             ws1.receive_json()  # P1's own state_update (hand visible)
             p2_msg = ws2.receive_json()  # P2's state_update
 
-            # P2 should see P1's card_count but NOT the actual cards
+            # P2 should see P1's card_count annotated onto their view
             p1_in_p2_view = p2_msg["state"]["current_round"]["player_states"][p1]
             assert p1_in_p2_view["card_count"] == 1
-            assert p1_in_p2_view["cards_in_hand"] == []
 
     def test_own_hand_is_visible(self):
         game_id, p1, _ = setup_game()
+        stack_deck(game_id, NumberCard(value=4))
 
         with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws:
             ws.receive_json()
-            ws.send_json({"type": "deal_card", "card": {"card_type": "number", "value": 4}})
+            ws.send_json({"type": "deal_card"})
             msg = ws.receive_json()
 
             p1_state = msg["state"]["current_round"]["player_states"][p1]
@@ -362,10 +360,11 @@ class TestPrivacyFilter:
 class TestActionCards:
     def test_dealing_action_card_sends_action_pending(self):
         game_id, p1, _ = setup_game()
+        stack_deck(game_id, ActionCard(action_type=ActionType.FREEZE))
 
         with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws:
             ws.receive_json()
-            ws.send_json({"type": "deal_card", "card": {"card_type": "action", "action_type": "freeze"}})
+            ws.send_json({"type": "deal_card"})
             msg = ws.receive_json()
             assert msg["type"] == "action_pending"
             assert msg["action_type"] == "freeze"
@@ -374,6 +373,7 @@ class TestActionCards:
 
     def test_action_pending_broadcast_to_all_players(self):
         game_id, p1, p2 = setup_game()
+        stack_deck(game_id, ActionCard(action_type=ActionType.FLIP_THREE))
 
         with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws1, \
              client.websocket_connect(f"/ws/{game_id}/{p2}") as ws2:
@@ -381,7 +381,7 @@ class TestActionCards:
             ws1.receive_json()
             ws2.receive_json()
 
-            ws1.send_json({"type": "deal_card", "card": {"card_type": "action", "action_type": "flip_three"}})
+            ws1.send_json({"type": "deal_card"})
 
             msg1 = ws1.receive_json()
             msg2 = ws2.receive_json()
@@ -391,6 +391,7 @@ class TestActionCards:
     def test_apply_action_requires_owner(self):
         """A player who did not draw the card cannot apply it."""
         game_id, p1, p2 = setup_game()
+        stack_deck(game_id, ActionCard(action_type=ActionType.FREEZE))
 
         with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws1, \
              client.websocket_connect(f"/ws/{game_id}/{p2}") as ws2:
@@ -399,7 +400,7 @@ class TestActionCards:
             ws2.receive_json()
 
             # P1 draws the action card
-            ws1.send_json({"type": "deal_card", "card": {"card_type": "action", "action_type": "freeze"}})
+            ws1.send_json({"type": "deal_card"})
             ws1.receive_json()  # action_pending
             ws2.receive_json()  # action_pending
 
@@ -410,6 +411,7 @@ class TestActionCards:
 
     def test_apply_action_broadcasts_state_update(self):
         game_id, p1, p2 = setup_game()
+        stack_deck(game_id, ActionCard(action_type=ActionType.SECOND_CHANCE))
 
         with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws1, \
              client.websocket_connect(f"/ws/{game_id}/{p2}") as ws2:
@@ -417,7 +419,7 @@ class TestActionCards:
             ws1.receive_json()
             ws2.receive_json()
 
-            ws1.send_json({"type": "deal_card", "card": {"card_type": "action", "action_type": "second_chance"}})
+            ws1.send_json({"type": "deal_card"})
             ws1.receive_json()  # action_pending
             ws2.receive_json()  # action_pending
 

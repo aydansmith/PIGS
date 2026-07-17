@@ -279,10 +279,12 @@ class GameEngine:
             and not player_state.is_busted
             and check_round_end_condition(self.game_state.current_round)
         ):
-            # Bank the Flip 7 player's score before ending (they didn't explicitly stay)
+            # Bank the Flip 7 player's score before ending (they didn't explicitly stay).
+            # Mark them as stayed so end_round()'s banking loop doesn't add this again.
             score_breakdown = calculate_score(player_state.cards_in_hand)
             player_state.round_score = score_breakdown.final_score
             player_state.total_score += player_state.round_score
+            player_state.has_stayed = True
             self.end_round()
             return card_from_deck
 
@@ -354,6 +356,54 @@ class GameEngine:
 
         # Apply the effect
         self._apply_action_card(target_player_id, card, original_player_id)
+
+    def discard_action_card(
+        self,
+        card: ActionCard,
+        original_player_id: str
+    ) -> None:
+        """
+        Discard an action card without applying its effect.
+
+        Used when a card cannot legitimately be assigned to anyone - e.g. a
+        second Second Chance is drawn while the drawer already holds one and
+        every other player has already stayed or busted, leaving no eligible
+        opponent to give it to.
+
+        Args:
+            card: The action card to discard
+            original_player_id: ID of the player who drew the card
+
+        Raises:
+            ValueError: If invalid game state or player
+        """
+        if self.game_state is None or self.game_state.current_round is None:
+            raise ValueError("No active round")
+
+        if original_player_id not in self.game_state.current_round.player_states:
+            raise ValueError(f"Player {original_player_id} not in game")
+
+        owner_state = self.game_state.current_round.player_states[original_player_id]
+        if card in owner_state.cards_in_hand:
+            owner_state.cards_in_hand.remove(card)
+        self.game_state.discard_pile.append(card)
+
+        player_name = next(
+            p.name for p in self.game_state.players if p.player_id == original_player_id
+        )
+        self.event_logger.log_event(ActionCardAppliedEvent(
+            game_id=self.game_state.game_id,
+            player_id=original_player_id,
+            player_name=player_name,
+            action_type=card.action_type,
+            effect_description=(
+                f"{player_name}'s {card.action_type.value.replace('_', ' ').title()} "
+                "card was discarded - no eligible target"
+            )
+        ))
+
+        # Advance the turn, mirroring the end of _apply_action_card's effect resolution.
+        self._advance_turn()
 
     def player_hit(self, player_id: str) -> None:
         """
