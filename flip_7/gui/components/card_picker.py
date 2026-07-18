@@ -545,3 +545,197 @@ def get_card_display(card):
         }
         return action_icons.get(card.action_type, str(card.action_type.value))
     return str(card)
+
+
+# ============================================================================
+# Styled card rendering (matches the physical Flip 7 deck)
+# ============================================================================
+
+NUMBER_WORDS = {
+    0: "Zero", 1: "One", 2: "Two", 3: "Three", 4: "Four",
+    5: "Five", 6: "Six", 7: "Seven", 8: "Eight", 9: "Nine",
+    10: "Ten", 11: "Eleven", 12: "Twelve",
+}
+
+NUMBER_COLORS = {
+    0: "#8f8f83", 1: "#a68f6b", 2: "#b8c23c", 3: "#c74a43",
+    4: "#5aa6b3", 5: "#4a9e6b", 6: "#8a6fae", 7: "#c15a4a",
+    8: "#3f9b6f", 9: "#e08a3c", 10: "#e2453a", 11: "#4472b8",
+    12: "#8a7f8f",
+}
+
+CARD_CSS = """
+<style>
+.f7-hand { display: flex; gap: 0.55rem; flex-wrap: wrap; margin: 0.4rem 0; }
+
+.f7-card {
+    --c: #999;
+    width: 68px;
+    height: 96px;
+    border-radius: 10px;
+    background: #f6efdd;
+    border: 2px solid var(--c);
+    box-shadow: 0 4px 10px -3px rgba(0,0,0,0.35), inset 0 0 0 3px rgba(255,255,255,0.35);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 2px;
+    flex: 0 0 auto;
+}
+.f7-card::before, .f7-card::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 10px;
+    height: 32px;
+    transform: translateY(-50%);
+    background: repeating-conic-gradient(from 90deg at 0% 50%, var(--c) 0deg 30deg, color-mix(in srgb, var(--c) 55%, #f6efdd) 30deg 60deg);
+    opacity: 0.85;
+}
+.f7-card::before { left: -2px; border-radius: 0 100% 100% 0 / 0 50% 50% 0; }
+.f7-card::after  { right: -2px; border-radius: 100% 0 0 100% / 50% 0 0 50%; transform: translateY(-50%) scaleX(-1); }
+
+.f7-band {
+    font-family: "American Typewriter", Georgia, serif;
+    font-size: 0.4rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--c);
+    background: #f6efdd;
+    padding: 1px 5px;
+    border-top: 1.5px solid var(--c);
+    border-bottom: 1.5px solid var(--c);
+    white-space: nowrap;
+}
+.f7-band-bottom { transform: rotate(180deg); }
+
+.f7-num {
+    font-family: "Avenir Next Condensed", Futura, "Century Gothic", sans-serif;
+    font-weight: 800;
+    font-size: 1.9rem;
+    color: var(--c);
+    line-height: 1;
+}
+
+.f7-tcard {
+    width: 68px;
+    height: 96px;
+    border-radius: 10px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 4px;
+    flex: 0 0 auto;
+    box-shadow: 0 4px 10px -3px rgba(0,0,0,0.35), inset 0 0 0 2px rgba(255,255,255,0.25);
+    color: #2c2417;
+}
+.f7-tcard-cap {
+    font-family: -apple-system, sans-serif;
+    font-size: 0.3rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    text-align: center;
+    line-height: 1.15;
+    opacity: 0.75;
+}
+.f7-tcard-chip {
+    background: rgba(255,255,255,0.82);
+    border-radius: 6px;
+    padding: 3px 6px;
+    font-family: "Avenir Next Condensed", Futura, sans-serif;
+    font-weight: 800;
+    font-size: 0.95rem;
+    text-align: center;
+    line-height: 1.05;
+    color: #201a12;
+}
+.f7-mod { background: linear-gradient(160deg, #f0b25e, #e0983a); }
+.f7-freeze { background: linear-gradient(160deg, #7dc7d9, #4fa3b8); }
+.f7-flip3 { background: linear-gradient(160deg, #f4d84a, #e2c02c); }
+.f7-second { background: linear-gradient(160deg, #ea6f5c, #d84f3c); }
+
+.f7-active-bar {
+    height: 4px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #b8863b, #e0983a);
+    margin-bottom: 0.6rem;
+}
+
+.f7-pill {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 0.27rem 0.6rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+}
+.f7-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.f7-pill-active  { background: rgba(184,134,59,0.16); color: #8f6528; }
+.f7-pill-waiting { background: rgba(122,109,84,0.16); color: #6b5f47; }
+.f7-pill-stayed  { background: rgba(79,163,184,0.16); color: #2d6d80; }
+.f7-pill-busted  { background: rgba(216,79,60,0.16); color: #a5382a; }
+.f7-pill-flip3   { background: rgba(226,192,44,0.22); color: #8a7409; }
+</style>
+"""
+
+
+def get_card_html(card: Card) -> str:
+    """
+    Render a card as styled HTML matching the physical Flip 7 deck
+    (cream ticket face, per-number color, mirrored name band for numbers;
+    solid ticket color with a value chip for modifier/action cards).
+    """
+    if isinstance(card, NumberCard):
+        color = NUMBER_COLORS.get(card.value, "#8f8f83")
+        word = NUMBER_WORDS.get(card.value, str(card.value))
+        return (
+            f'<div class="f7-card" style="--c:{color};">'
+            f'<div class="f7-band">{word}</div>'
+            f'<div class="f7-num">{card.value}</div>'
+            f'<div class="f7-band f7-band-bottom">{word}</div>'
+            f'</div>'
+        )
+    elif isinstance(card, ModifierCard):
+        if card.modifier_type == ModifierType.MULTIPLY_2:
+            chip, cap_top = f"×{card.value}", "The sum of your number cards"
+        else:
+            chip, cap_top = f"+{card.value}", "Add to your final score"
+        return (
+            f'<div class="f7-tcard f7-mod">'
+            f'<div class="f7-tcard-cap">{cap_top}</div>'
+            f'<div class="f7-tcard-chip">{chip}</div>'
+            f'<div class="f7-tcard-cap">Modifier</div>'
+            f'</div>'
+        )
+    elif isinstance(card, ActionCard):
+        variants = {
+            ActionType.FREEZE: ("f7-freeze", "FREEZE", "Play on an active player"),
+            ActionType.FLIP_THREE: ("f7-flip3", "FLIP<br>THREE", "Play on an active player"),
+            ActionType.SECOND_CHANCE: ("f7-second", "SECOND<br>CHANCE", "Save this card until needed"),
+        }
+        variant_class, label, caption = variants.get(
+            card.action_type, ("f7-freeze", str(card.action_type.value), "")
+        )
+        return (
+            f'<div class="f7-tcard {variant_class}">'
+            f'<div class="f7-tcard-cap">{caption}</div>'
+            f'<div class="f7-tcard-chip" style="font-size:0.68rem;">{label}</div>'
+            f'<div class="f7-tcard-cap">Instant Action</div>'
+            f'</div>'
+        )
+    return f'<div class="f7-tcard">{card}</div>'
+
+
+def get_status_pill_html(kind: str, label: str) -> str:
+    """Render a player status label as a colored pill badge."""
+    return f'<span class="f7-pill f7-pill-{kind}">{label}</span>'
