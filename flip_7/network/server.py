@@ -268,10 +268,15 @@ async def _handle_apply_action(
         raise ValueError("You do not own the pending action card")
 
     target_player_id = data["target_player_id"]
+    action_type = pending["card"].action_type.value
     engine.apply_action_card_effect(pending["card"], target_player_id, player_id)
     room_manager.pending_action[game_id] = None
 
-    await room_manager.broadcast_state(game_id, _infer_message_type(engine))
+    await room_manager.broadcast_state(
+        game_id,
+        _infer_message_type(engine),
+        extra={"action_applied": {"type": action_type, "target_player_id": target_player_id}},
+    )
 
 
 async def _handle_stay(

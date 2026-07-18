@@ -14,6 +14,12 @@ let myGameId   = null;
 let ws         = null;
 let lastState  = null;
 
+// Freeze animation tracking: `pendingFreezeIds` marks players who should play the
+// freeze-in animation on the very next render; `animatedFrozenIds` remembers who
+// already played it this round so later re-renders just show the settled frost tint.
+let pendingFreezeIds  = new Set();
+let animatedFrozenIds = new Set();
+
 // Card sort modes: 'original' | 'value' | 'type'
 const SORT_MODES  = ['original', 'value', 'type'];
 const SORT_LABELS = { original: '↕ Original', value: '🔢 By Value', type: '🃏 By Type' };
@@ -211,6 +217,8 @@ function handleMessage(msg) {
       break;
 
     case 'game_started':
+      animatedFrozenIds.clear();
+      pendingFreezeIds.clear();
       showScreen('screen-game');
       closeModal('screen-action-target');
       closeModal('screen-second-chance');
@@ -219,11 +227,16 @@ function handleMessage(msg) {
       break;
 
     case 'state_update':
+      if (msg.action_applied && msg.action_applied.type === 'freeze') {
+        pendingFreezeIds.add(msg.action_applied.target_player_id);
+      }
       renderGameState(msg.state);
       renderSheet(msg.state);
       break;
 
     case 'round_started':
+      animatedFrozenIds.clear();
+      pendingFreezeIds.clear();
       showScreen('screen-game');
       renderGameState(msg.state);
       renderSheet(msg.state);
@@ -336,17 +349,45 @@ function renderGameState(state) {
   }
 }
 
-function statusBadge(ps, isCurrentPlayer = false) {
+function statusBadge(ps, isCurrentPlayer = false, isFrozen = false) {
   if (ps.is_busted)         return '<span class="badge badge-bust">BUSTED</span>';
+  if (isFrozen)             return '<span class="badge badge-frozen">FROZEN</span>';
   if (ps.has_stayed)        return '<span class="badge badge-stay">STAYED</span>';
   if (ps.flip_three_active) return `<span class="badge badge-flip">FLIP THREE (${ps.flip_three_count} left)</span>`;
   if (isCurrentPlayer)      return '<span class="badge badge-turn">YOUR TURN</span>';
   return '<span class="badge badge-active">ACTIVE</span>';
 }
 
+/** Frost overlay markup — a few absolutely-positioned decoration divs the freeze CSS animates. */
+function frostMarkup() {
+  return `
+    <div class="frost-overlay"></div>
+    <div class="frost-crack" style="top:35%; left:15%; width:60%; height:2px; transform:rotate(-8deg);"></div>
+    <div class="frost-crack" style="top:60%; left:25%; width:45%; height:2px; transform:rotate(12deg);"></div>
+    <div class="frost-snowflake">❄️</div>
+  `;
+}
+
+/**
+ * Determine this player's freeze animation state for the current render:
+ * 'freezing' the first time we render them after a freeze is applied,
+ * 'frozen-settled' on every render after that (until the round resets),
+ * or '' if they were never frozen (a voluntary stay doesn't get frost).
+ */
+function frostClassFor(playerId, ps) {
+  if (!ps.has_stayed) return '';
+  if (pendingFreezeIds.has(playerId)) {
+    pendingFreezeIds.delete(playerId);
+    animatedFrozenIds.add(playerId);
+    return 'freezing';
+  }
+  return animatedFrozenIds.has(playerId) ? 'frozen-settled' : '';
+}
+
 function renderOpponent(playerInfo, ps, isCurrentPlayer = false) {
   const div = document.createElement('div');
-  div.className = 'opponent-row' + (isCurrentPlayer ? ' opponent-active-turn' : '');
+  const frostClass = frostClassFor(playerInfo.player_id, ps);
+  div.className = 'opponent-row' + (isCurrentPlayer ? ' opponent-active-turn' : '') + (frostClass ? ' ' + frostClass : '');
 
   const cardCount = ps.card_count ?? ps.cards_in_hand.length;
   const cardsHtml = ps.cards_in_hand.length
@@ -354,7 +395,8 @@ function renderOpponent(playerInfo, ps, isCurrentPlayer = false) {
     : '<div class="opponent-hand"><span class="hint">No cards yet</span></div>';
 
   div.innerHTML = `
-    <div class="opponent-name">${escHtml(playerInfo.name)} ${statusBadge(ps, isCurrentPlayer)}</div>
+    ${frostClass ? frostMarkup() : ''}
+    <div class="opponent-name">${escHtml(playerInfo.name)} ${statusBadge(ps, isCurrentPlayer, !!frostClass)}</div>
     <div class="opponent-stats">
       <span>${cardCount} card${cardCount !== 1 ? 's' : ''}</span>
       <span>Round: <strong>${ps.round_score}</strong></span>
@@ -386,7 +428,8 @@ function sortedCards(cards) {
 
 function renderMyPanel(playerInfo, ps, state) {
   const div = document.createElement('div');
-  div.className = 'my-panel-inner';
+  const frostClass = frostClassFor(playerInfo.player_id, ps);
+  div.className = 'my-panel-inner' + (frostClass ? ' ' + frostClass : '');
 
   const round = state.current_round;
   const isMyTurn = round && round.current_player_id === state.your_player_id;
@@ -413,7 +456,8 @@ function renderMyPanel(playerInfo, ps, state) {
   const sortLabel = SORT_LABELS[cardSortMode];
 
   div.innerHTML = `
-    <div class="my-name">${escHtml(playerInfo.name)} ${statusBadge(ps, isMyTurn)}</div>
+    ${frostClass ? frostMarkup() : ''}
+    <div class="my-name">${escHtml(playerInfo.name)} ${statusBadge(ps, isMyTurn, !!frostClass)}</div>
     <div class="hand-header">
       <span class="hand-label">Cards in hand</span>
       <button class="btn btn-sort btn-small" onclick="cycleCardSort()">${sortLabel}</button>

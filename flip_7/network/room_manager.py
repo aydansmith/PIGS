@@ -363,7 +363,12 @@ class RoomManager:
 
         return state
 
-    async def broadcast_state(self, game_id: str, message_type: str = "state_update") -> None:
+    async def broadcast_state(
+        self,
+        game_id: str,
+        message_type: str = "state_update",
+        extra: Optional[dict] = None,
+    ) -> None:
         """
         Send each player their own filtered GameState view.
 
@@ -374,6 +379,8 @@ class RoomManager:
             game_id: The room to broadcast to.
             message_type: The 'type' field in the message (e.g. "state_update",
                           "game_started", "round_started").
+            extra: Additional fields to merge into every outgoing message
+                   (e.g. which player a just-applied action targeted).
         """
         for player_id in self.room_players.get(game_id, {}):
             try:
@@ -383,5 +390,5 @@ class RoomManager:
 
             await self.send_to_player(
                 player_id,
-                {"type": message_type, "state": state},
+                {"type": message_type, "state": state, **(extra or {})},
             )

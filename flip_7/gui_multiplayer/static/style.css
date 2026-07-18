@@ -240,6 +240,8 @@ input[type="text"]:focus { border-color: var(--accent); }
 .opponents-section { display: flex; flex-direction: column; gap: .5rem; }
 
 .opponent-row {
+  position: relative;
+  overflow: hidden;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -249,15 +251,93 @@ input[type="text"]:focus { border-color: var(--accent); }
   align-items: center;
   flex-wrap: wrap;
   gap: .5rem;
+  transition: border-color .4s ease, box-shadow .4s ease;
 }
 .opponent-name  { font-weight: 600; }
 .opponent-stats { display: flex; gap: .85rem; color: var(--text-muted); font-size: .9rem; align-items: center; flex-wrap: wrap; }
+
+/* --- Freeze animation: plays once when a player is frozen, then leaves a lasting frost tint --- */
+.frost-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,0.55) 0%, transparent 35%),
+    radial-gradient(circle at 80% 75%, rgba(255,255,255,0.4) 0%, transparent 40%),
+    linear-gradient(160deg, #7dc7d9, #4fa3b8);
+  mix-blend-mode: screen;
+}
+.frost-crack {
+  position: absolute;
+  background: rgba(255,255,255,0.85);
+  transform-origin: left center;
+  opacity: 0;
+}
+.frost-snowflake {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 1.1rem;
+  opacity: 0;
+  transform: scale(0.4) rotate(-20deg);
+}
+
+.opponent-row.freezing,
+.my-panel-inner.freezing {
+  border-color: #4fa3b8;
+  box-shadow: 0 0 0 1px #4fa3b8, 0 0 18px -2px rgba(79,163,184,0.7);
+  animation: frost-shiver .5s ease-in-out;
+}
+.opponent-row.freezing .frost-overlay,
+.my-panel-inner.freezing .frost-overlay {
+  animation: frost-in .55s ease-out forwards;
+}
+.opponent-row.freezing .frost-crack,
+.my-panel-inner.freezing .frost-crack {
+  animation: frost-crack-in .45s ease-out forwards;
+}
+.opponent-row.freezing .frost-snowflake,
+.my-panel-inner.freezing .frost-snowflake {
+  animation: frost-flake-pop .6s cubic-bezier(.2,1.4,.4,1) forwards;
+}
+.opponent-row.frozen-settled .frost-overlay,
+.my-panel-inner.frozen-settled .frost-overlay {
+  opacity: 0.22;
+}
+
+@keyframes frost-in {
+  0%   { opacity: 0; filter: blur(4px); }
+  60%  { opacity: 0.55; filter: blur(1px); }
+  100% { opacity: 0.22; filter: blur(0); }
+}
+@keyframes frost-crack-in {
+  0%   { opacity: 0; transform: scaleX(0); }
+  40%  { opacity: 1; }
+  100% { opacity: 0; transform: scaleX(1); }
+}
+@keyframes frost-flake-pop {
+  0%   { opacity: 0; transform: scale(0.2) rotate(-20deg); }
+  50%  { opacity: 1; transform: scale(1.3) rotate(8deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+@keyframes frost-shiver {
+  0%, 100% { transform: translateX(0); }
+  20%  { transform: translateX(-2px) rotate(-0.3deg); }
+  40%  { transform: translateX(2px) rotate(0.3deg); }
+  60%  { transform: translateX(-1px); }
+  80%  { transform: translateX(1px); }
+}
+
+.badge-frozen { background: #123a45; color: #9de8f7; }
 
 /* --- My panel --------------------------------------------------------------- */
 
 .my-section { display: flex; flex-direction: column; gap: .75rem; }
 
 .my-panel-inner {
+  position: relative;
+  overflow: hidden;
   background: var(--bg-card);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
