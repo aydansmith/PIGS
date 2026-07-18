@@ -91,6 +91,47 @@
 
     <!-- "Waiting for X to choose a target" overlay shown to non-owners -->
     <div id="action-waiting-banner" class="action-waiting-banner hidden"></div>
+
+    <!-- Dims the board only while the sheet is fully expanded -->
+    <div id="sheet-scrim" class="sheet-scrim"></div>
+
+    <!-- =====================================================================
+         Standings / history bottom sheet — always present once a game has
+         started. Peek bar shows live standings; drag/tap to expand into
+         full standings, round history, cross-game tracking, and (when the
+         round/game ends) the actions that used to live on separate screens.
+         ===================================================================== -->
+    <div id="sheet" class="sheet">
+      <div id="sheet-peek" class="sheet-peek">
+        <div class="sheet-handle"></div>
+        <div class="peek-row">
+          <div id="peek-scores" class="peek-scores"></div>
+          <span class="peek-chev">▲</span>
+        </div>
+        <div id="peek-alert" class="peek-alert hidden"></div>
+      </div>
+
+      <div class="sheet-scroll">
+        <div id="sheet-gameover-card" class="sheet-gameover hidden"></div>
+
+        <div id="sheet-games-section" class="games-section hidden">
+          <h3 class="section-label">Overall Standings <span class="section-hint">— games won this room</span></h3>
+          <div id="sheet-tally-list" class="score-list"></div>
+        </div>
+
+        <div>
+          <h3 class="section-label">This Game</h3>
+          <div id="sheet-standings-list" class="score-list"></div>
+        </div>
+
+        <div>
+          <h3 class="section-label">Round History</h3>
+          <div id="sheet-history-list" class="history-list"></div>
+        </div>
+      </div>
+
+      <div id="sheet-footer" class="sheet-footer hidden"></div>
+    </div>
   </div>
 
   <!-- =====================================================================
@@ -113,35 +154,6 @@
       <p class="hint">Choose a duplicate number card to discard:</p>
       <div id="second-chance-list" class="target-list"></div>
       <button class="btn btn-ghost btn-full" onclick="closeModal('screen-second-chance')">Cancel</button>
-    </div>
-  </div>
-
-  <!-- =====================================================================
-       Screen 6: Round end summary
-       ===================================================================== -->
-  <div id="screen-round-end" class="screen">
-    <div class="card-panel lobby-panel">
-      <h2 id="round-end-title">Round Complete</h2>
-      <div id="round-end-flip7-banner" class="flip7-banner hidden"></div>
-      <div id="round-end-scores" class="score-list"></div>
-      <button id="next-round-btn" class="btn btn-primary btn-full hidden" onclick="sendStartRound()">
-        ▶ Start Next Round
-      </button>
-      <div class="hint" id="round-end-waiting" class="hidden">Waiting for the host to start the next round…</div>
-    </div>
-  </div>
-
-  <!-- =====================================================================
-       Screen 7: Game over
-       ===================================================================== -->
-  <div id="screen-game-over" class="screen">
-    <div class="card-panel lobby-panel">
-      <h2>🎉 Game Over!</h2>
-      <div id="game-over-winner" class="winner-display"></div>
-      <div id="game-over-scores" class="score-list"></div>
-      <button id="rematch-btn" class="btn btn-primary btn-full hidden" onclick="sendRematch()">🔁 Play Again (Same Room)</button>
-      <div id="game-over-waiting" class="hint hidden">Waiting for the host to start a new game…</div>
-      <button class="btn btn-ghost btn-full" onclick="resetToLobby()">Leave Room</button>
     </div>
   </div>
 

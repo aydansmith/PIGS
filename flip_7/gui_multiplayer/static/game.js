@@ -215,25 +215,28 @@ function handleMessage(msg) {
       closeModal('screen-action-target');
       closeModal('screen-second-chance');
       renderGameState(msg.state);
+      renderSheet(msg.state);
       break;
 
     case 'state_update':
       renderGameState(msg.state);
+      renderSheet(msg.state);
       break;
 
     case 'round_started':
       showScreen('screen-game');
       renderGameState(msg.state);
+      renderSheet(msg.state);
       break;
 
     case 'round_ended':
       renderRoundEndingBoard(msg.state);
-      setTimeout(() => renderRoundEnd(msg.state), 3000);
+      renderSheet(msg.state, { attentionFlash: 'ended' });
       break;
 
     case 'game_over':
       renderRoundEndingBoard(msg.state);
-      setTimeout(() => renderGameOver(msg.state), 3000);
+      renderSheet(msg.state, { attentionFlash: 'over' });
       break;
 
     case 'action_pending':
@@ -495,92 +498,244 @@ function renderRoundEndingBoard(state) {
 }
 
 // =============================================================================
-// Round end + game over
+// Standings / history bottom sheet
 // =============================================================================
 
-function renderRoundEnd(state) {
-  lastState = state;
-  const history = state.round_history;
-  if (!history || history.length === 0) return;
+const sheet      = document.getElementById('sheet');
+const sheetPeek   = document.getElementById('sheet-peek');
+const sheetScrim  = document.getElementById('sheet-scrim');
 
-  const lastRound = history[history.length - 1];
-  const roundNum  = lastRound.round_number;
-
-  const isFlip7 = lastRound.end_reason === 'flip_7';
-  const titleEl = document.getElementById('round-end-title');
-  const bannerEl = document.getElementById('round-end-flip7-banner');
-
-  if (isFlip7) {
-    const winner = state.players.find(p => lastRound.winner_ids.includes(p.player_id));
-    const winnerName = winner ? escHtml(winner.name) : 'A player';
-    titleEl.innerHTML = '🎉 FLIP 7!';
-    if (bannerEl) {
-      bannerEl.innerHTML = `<strong>${winnerName}</strong> collected all 7 unique number cards and earned a 15-point bonus!`;
-      bannerEl.classList.remove('hidden');
-    }
-  } else {
-    titleEl.textContent = `Round ${roundNum} Complete`;
-    if (bannerEl) bannerEl.classList.add('hidden');
-  }
-
-  const scoresEl = document.getElementById('round-end-scores');
-  scoresEl.innerHTML = '';
-
-  const sorted = state.players
-    .map(p => ({ ...p, ps: lastRound.player_states[p.player_id] }))
-    .filter(p => p.ps)
-    .sort((a, b) => b.ps.round_score - a.ps.round_score);
-
-  sorted.forEach(p => {
-    const isWinner = lastRound.winner_ids.includes(p.player_id);
-    const row = document.createElement('div');
-    row.className = 'score-row';
-    row.innerHTML = `
-      <span>${isWinner ? '👑 ' : ''}${escHtml(p.name)}</span>
-      <span>+${p.ps.round_score} pts &nbsp; → &nbsp; <strong>${p.ps.total_score} total</strong></span>
-    `;
-    scoresEl.appendChild(row);
-  });
-
-  const nextBtn     = document.getElementById('next-round-btn');
-  const waitingNote = document.getElementById('round-end-waiting');
-  nextBtn.classList.toggle('hidden', !state.is_host);
-  if (waitingNote) waitingNote.classList.toggle('hidden', state.is_host);
-
-  showScreen('screen-round-end');
+function setSheetExpanded(expanded) {
+  sheet.classList.toggle('is-expanded', expanded);
+  sheetScrim.classList.toggle('is-visible', expanded);
 }
 
-function renderGameOver(state) {
-  lastState = state;
+function flashSheet() {
+  sheet.classList.remove('flash-flag');
+  void sheet.offsetWidth; // restart the animation
+  sheet.classList.add('flash-flag');
+}
 
-  const history  = state.round_history;
-  const lastRound = history[history.length - 1];
+/** Renders one round as a collapsible <details> history entry. */
+function renderHistoryEntry(round, state, open) {
+  const reasonLabel = END_REASON_LABELS[round.end_reason] ?? 'Round over';
+  const pillClass = round.end_reason === 'flip_7'        ? 'pill-flip7'
+    : round.end_reason === 'player_busted'                ? 'pill-bust'
+    :                                                        'pill-allstay';
 
-  const winner = state.players.find(p => p.player_id === state.winner_id);
-  document.getElementById('game-over-winner').innerHTML =
-    winner ? `<p class="winner-name">👑 ${escHtml(winner.name)} wins!</p>` : '';
+  const winnerNames = (round.winner_ids || [])
+    .map(id => state.players.find(p => p.player_id === id)?.name)
+    .filter(Boolean);
+  const pillLabel = round.end_reason === 'flip_7' && winnerNames.length
+    ? `🎉 Flip 7 — ${escHtml(winnerNames[0])}`
+    : reasonLabel;
 
-  const scoresEl = document.getElementById('game-over-scores');
-  scoresEl.innerHTML = '';
+  const rows = state.players
+    .map(p => ({ ...p, ps: round.player_states[p.player_id] }))
+    .filter(p => p.ps)
+    .sort((a, b) => b.ps.round_score - a.ps.round_score)
+    .map(p => {
+      const isWinner = (round.winner_ids || []).includes(p.player_id);
+      return `<div class="history-detail-row"><span class="${isWinner ? 'winner' : ''}">${isWinner ? '👑 ' : ''}${escHtml(p.name)}</span><strong>+${p.ps.round_score}</strong></div>`;
+    })
+    .join('');
 
-  const sorted = state.players
-    .map(p => ({ ...p, total: lastRound?.player_states[p.player_id]?.total_score ?? 0 }))
+  return `
+    <details class="history-entry" ${open ? 'open' : ''}>
+      <summary class="history-summary">
+        <span class="chev">▸</span>
+        <span class="history-round">R${round.round_number}</span>
+        <span class="history-reason"><span class="pill ${pillClass}">${pillLabel}</span></span>
+      </summary>
+      <div class="history-detail">${rows}</div>
+    </details>
+  `;
+}
+
+/**
+ * Renders the whole bottom sheet: peek standings, "This Game" / "Overall
+ * Standings" score lists, round history (current game + past games from
+ * match_history), and the round/game-end footer actions.
+ *
+ * opts.attentionFlash: 'ended' | 'over' | undefined — auto-expands the sheet
+ * with a brief flash when a round or the game just ended.
+ */
+function renderSheet(state, opts = {}) {
+  const isGameOver   = state.is_complete;
+  const roundHistory = state.round_history || [];
+  const currentRound = state.current_round;
+  const matchHistory = state.match_history || [];
+
+  // "This Game" standings source: the active round if one exists, otherwise
+  // the most recently completed round (round just ended / game just ended).
+  const sourceStates = currentRound
+    ? currentRound.player_states
+    : (roundHistory.length ? roundHistory[roundHistory.length - 1].player_states : {});
+
+  const standings = state.players
+    .map(p => ({ ...p, total: sourceStates[p.player_id]?.total_score ?? 0 }))
     .sort((a, b) => b.total - a.total);
 
-  sorted.forEach((p, i) => {
-    const row = document.createElement('div');
-    row.className = 'score-row';
-    row.innerHTML = `<span>${i + 1}. ${escHtml(p.name)}</span><span><strong>${p.total} pts</strong></span>`;
-    scoresEl.appendChild(row);
+  // Peek bar: compact live standings.
+  document.getElementById('peek-scores').innerHTML = standings.map((p, i) => {
+    const cls = p.player_id === state.your_player_id ? 'me' : (i === 0 ? 'lead' : 'dim');
+    return `<span class="${cls}">${i === 0 ? '👑 ' : ''}${escHtml(p.name)} ${p.total}</span>`;
+  }).join('');
+
+  // "This Game" score list.
+  document.getElementById('sheet-standings-list').innerHTML = standings.map((p, i) => `
+    <div class="score-row ${p.player_id === state.your_player_id ? 'is-me' : ''}">
+      <span>${i === 0 ? '👑 ' : ''}${escHtml(p.name)}${p.player_id === state.your_player_id ? ' <span class="you-tag">YOU</span>' : ''}</span>
+      <span><strong>${p.total}</strong></span>
+    </div>
+  `).join('');
+
+  // Round history: this game first (most recent round on top), then past
+  // games from match_history, oldest games last.
+  let historyHtml = isGameOver
+    ? `<div class="game-divider">Game ${state.game_number} complete${state.winner_id ? ' — ' + escHtml(state.players.find(p => p.player_id === state.winner_id)?.name ?? '') + ' won' : ''}</div>`
+    : `<div class="game-divider is-active">Game ${state.game_number} — in progress</div>`;
+
+  if (roundHistory.length === 0) {
+    historyHtml += '<div class="history-empty-hint">No rounds completed yet</div>';
+  } else {
+    historyHtml += [...roundHistory].reverse()
+      .map((round, idx) => renderHistoryEntry(round, state, idx === 0))
+      .join('');
+  }
+
+  [...matchHistory].reverse().forEach((game, gi) => {
+    const gameNumber = matchHistory.length - gi;
+    historyHtml += `<div class="game-divider">Game ${gameNumber} complete${game.winner_name ? ' — ' + escHtml(game.winner_name) + ' won' : ''}</div>`;
+    historyHtml += [...game.rounds].reverse().map(round => renderHistoryEntry(round, state, false)).join('');
   });
 
-  const rematchBtn   = document.getElementById('rematch-btn');
-  const waitingNote  = document.getElementById('game-over-waiting');
-  rematchBtn.classList.toggle('hidden', !state.is_host);
-  if (waitingNote) waitingNote.classList.toggle('hidden', state.is_host);
+  document.getElementById('sheet-history-list').innerHTML = historyHtml;
 
-  showScreen('screen-game-over');
+  // "Overall Standings" — games won this room. Only meaningful once at
+  // least one rematch has happened, so it stays hidden until then.
+  const gamesSection = document.getElementById('sheet-games-section');
+  if (matchHistory.length === 0) {
+    gamesSection.classList.add('hidden');
+  } else {
+    gamesSection.classList.remove('hidden');
+    const winCounts = {};
+    state.players.forEach(p => { winCounts[p.player_id] = 0; });
+    matchHistory.forEach(g => {
+      if (g.winner_id && winCounts[g.winner_id] !== undefined) winCounts[g.winner_id] += 1;
+    });
+    const tallySorted = state.players
+      .map(p => ({ ...p, wins: winCounts[p.player_id] || 0 }))
+      .sort((a, b) => b.wins - a.wins);
+
+    document.getElementById('sheet-tally-list').innerHTML = tallySorted.map((p, i) => `
+      <div class="score-row ${p.player_id === state.your_player_id ? 'is-me' : ''}">
+        <span>${i === 0 && p.wins > 0 ? '👑 ' : ''}${escHtml(p.name)}${p.player_id === state.your_player_id ? ' <span class="you-tag">YOU</span>' : ''}</span>
+        <span>${p.wins} win${p.wins !== 1 ? 's' : ''}</span>
+      </div>
+    `).join('');
+  }
+
+  // Game-over card.
+  const gameoverCard = document.getElementById('sheet-gameover-card');
+  if (isGameOver) {
+    const winner = state.players.find(p => p.player_id === state.winner_id);
+    gameoverCard.classList.remove('hidden');
+    gameoverCard.innerHTML = winner
+      ? `<div class="winner-display"><p class="winner-name">🏆 ${escHtml(winner.name)} wins!</p></div>
+         <p class="hint" style="text-align:center;">${sourceStates[winner.player_id]?.total_score ?? ''} total points</p>`
+      : '<div class="winner-display"><p class="winner-name">Game over</p></div>';
+  } else {
+    gameoverCard.classList.add('hidden');
+  }
+
+  // Footer actions: rematch/leave once the game is over, start-next-round
+  // while a round has ended but the game hasn't, otherwise nothing.
+  const footer = document.getElementById('sheet-footer');
+  if (isGameOver) {
+    footer.classList.remove('hidden');
+    footer.innerHTML = state.is_host
+      ? `<button class="btn btn-primary" onclick="sendRematch()">🔁 Play Again (Same Room)</button>
+         <button class="btn btn-ghost" onclick="resetToLobby()">Leave Room</button>`
+      : `<p class="hint" style="text-align:center;">Waiting for the host to start a new game…</p>
+         <button class="btn btn-ghost" onclick="resetToLobby()">Leave Room</button>`;
+  } else if (currentRound === null && roundHistory.length > 0) {
+    footer.classList.remove('hidden');
+    footer.innerHTML = state.is_host
+      ? '<button class="btn btn-primary" onclick="sendStartRound()">▶ Start Next Round</button>'
+      : '<p class="hint" style="text-align:center;">Waiting for the host to start the next round…</p>';
+  } else {
+    footer.classList.add('hidden');
+    footer.innerHTML = '';
+  }
+
+  // Attention flash — auto-expand and pulse when a round or the game just ended.
+  const peekAlert = document.getElementById('peek-alert');
+  if (opts.attentionFlash === 'ended') {
+    const lastRound = roundHistory[roundHistory.length - 1];
+    peekAlert.textContent = `${END_REASON_LABELS[lastRound?.end_reason] ?? 'Round ended'} — tap for details`;
+    peekAlert.style.color = '';
+    peekAlert.classList.remove('hidden');
+    setSheetExpanded(true);
+    flashSheet();
+  } else if (opts.attentionFlash === 'over') {
+    peekAlert.textContent = 'Game over — tap for details';
+    peekAlert.style.color = '#ffd966';
+    peekAlert.classList.remove('hidden');
+    setSheetExpanded(true);
+    flashSheet();
+  } else {
+    peekAlert.classList.add('hidden');
+  }
 }
+
+// --- Tap to expand/collapse, and drag to snap between peek and expanded ---
+
+let sheetDragging  = false;
+let sheetDidDrag    = false;
+let sheetStartY      = 0;
+let sheetStartOffset = 0;
+
+function sheetTranslateY() {
+  const matrix = new DOMMatrixReadOnly(window.getComputedStyle(sheet).transform);
+  return matrix.m42;
+}
+
+sheetPeek.addEventListener('click', () => {
+  if (sheetDidDrag) { sheetDidDrag = false; return; }
+  setSheetExpanded(!sheet.classList.contains('is-expanded'));
+});
+sheetScrim.addEventListener('click', () => setSheetExpanded(false));
+
+sheetPeek.addEventListener('pointerdown', (e) => {
+  sheetDragging = true;
+  sheetDidDrag = false;
+  sheetStartY = e.clientY;
+  sheetStartOffset = sheetTranslateY();
+  sheet.classList.add('dragging');
+  sheetPeek.setPointerCapture(e.pointerId);
+});
+
+sheetPeek.addEventListener('pointermove', (e) => {
+  if (!sheetDragging) return;
+  const delta = e.clientY - sheetStartY;
+  if (Math.abs(delta) > 4) sheetDidDrag = true;
+  const maxOffset = sheet.offsetHeight - sheetPeek.offsetHeight;
+  const next = Math.min(maxOffset, Math.max(0, sheetStartOffset + delta));
+  sheet.style.transform = `translateY(${next}px)`;
+});
+
+function endSheetDrag() {
+  if (!sheetDragging) return;
+  sheetDragging = false;
+  sheet.classList.remove('dragging');
+  const current = sheetTranslateY();
+  sheet.style.transform = '';
+  setSheetExpanded(current < sheet.offsetHeight * 0.5);
+}
+
+sheetPeek.addEventListener('pointerup', endSheetDrag);
+sheetPeek.addEventListener('pointercancel', endSheetDrag);
 
 async function sendRematch() {
   try {
@@ -804,6 +959,7 @@ function resetToLobby() {
   if (ws) { ws.close(); ws = null; }
   document.getElementById('player-name-input').value = '';
   document.getElementById('room-code-input').value   = '';
+  setSheetExpanded(false);
   showScreen('screen-lobby-join');
 }
 

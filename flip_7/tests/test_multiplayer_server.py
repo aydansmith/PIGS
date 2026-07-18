@@ -194,6 +194,37 @@ class TestRematch:
         res = client.post(f"/api/rooms/{game_id}/rematch", json={"player_id": p1})
         assert res.status_code == 422
 
+    def test_match_history_captures_completed_game_and_resets_for_rematch(self):
+        game_id, p1, p2 = setup_game()
+        engine = room_manager.get_engine(game_id)
+
+        # Finish the round with p1 crossing the win threshold.
+        round_states = engine.game_state.current_round.player_states
+        round_states[p1].has_stayed = True
+        round_states[p1].total_score = 205
+        round_states[p2].has_stayed = True
+        round_states[p2].total_score = 40
+        engine.end_round()
+
+        assert engine.game_state.is_complete
+        assert engine.game_state.winner_id == p1
+
+        res = client.post(f"/api/rooms/{game_id}/rematch", json={"player_id": p1})
+        assert res.status_code == 200
+
+        with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws:
+            msg = consume_connect_message(ws, "state_update")
+            state = msg["state"]
+
+        assert state["game_number"] == 2
+        assert len(state["match_history"]) == 1
+
+        completed_game = state["match_history"][0]
+        assert completed_game["winner_id"] == p1
+        assert completed_game["final_scores"][p1] == 205
+        assert completed_game["final_scores"][p2] == 40
+        assert len(completed_game["rounds"]) == 1
+
 
 # =============================================================================
 # WebSocket connection tests
