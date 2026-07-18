@@ -319,7 +319,7 @@ function renderOpponent(playerInfo, ps, isCurrentPlayer = false) {
 
   const cardCount = ps.card_count ?? ps.cards_in_hand.length;
   const cardsHtml = ps.cards_in_hand.length
-    ? `<div class="opponent-hand">${ps.cards_in_hand.map(c => `<span class="card-chip card-${c.card_type}">${cardLabel(c)}</span>`).join('')}</div>`
+    ? `<div class="opponent-hand f7-hand">${ps.cards_in_hand.map(c => cardHtml(c)).join('')}</div>`
     : '<div class="opponent-hand"><span class="hint">No cards yet</span></div>';
 
   div.innerHTML = `
@@ -363,7 +363,7 @@ function renderMyPanel(playerInfo, ps, state) {
   // Hand display (respect current sort mode)
   const displayCards = sortedCards(ps.cards_in_hand);
   const handHtml = displayCards.length
-    ? displayCards.map(c => `<span class="card-chip card-${c.card_type}">${cardLabel(c)}</span>`).join('')
+    ? displayCards.map(c => cardHtml(c)).join('')
     : '<span class="hint">No cards yet</span>';
 
   // Score breakdown text
@@ -450,7 +450,7 @@ function renderRoundEndingBoard(state) {
     div.className = 'my-panel-inner';
     const displayCards = sortedCards(myPs.cards_in_hand);
     const handHtml = displayCards.length
-      ? displayCards.map(c => `<span class="card-chip card-${c.card_type}">${cardLabel(c)}</span>`).join('')
+      ? displayCards.map(c => cardHtml(c)).join('')
       : '<span class="hint">No cards</span>';
     const sortLabel = SORT_LABELS[cardSortMode];
     div.innerHTML = `
@@ -649,6 +649,65 @@ function cardLabel(card) {
     return labels[card.action_type] ?? card.action_type;
   }
   return '?';
+}
+
+// =============================================================================
+// Card rendering — mirrors the physical Flip 7 deck (flip_7/gui/components/card_picker.py)
+// =============================================================================
+
+const NUMBER_WORDS = {
+  0: 'Zero', 1: 'One', 2: 'Two', 3: 'Three', 4: 'Four',
+  5: 'Five', 6: 'Six', 7: 'Seven', 8: 'Eight', 9: 'Nine',
+  10: 'Ten', 11: 'Eleven', 12: 'Twelve',
+};
+
+const NUMBER_COLORS = {
+  0: '#8f8f83', 1: '#a68f6b', 2: '#b8c23c', 3: '#c74a43',
+  4: '#5aa6b3', 5: '#4a9e6b', 6: '#8a6fae', 7: '#c15a4a',
+  8: '#3f9b6f', 9: '#e08a3c', 10: '#e2453a', 11: '#4472b8',
+  12: '#8a7f8f',
+};
+
+function cardHtml(card) {
+  if (card.card_type === 'number') {
+    const color = NUMBER_COLORS[card.value] ?? '#8f8f83';
+    const word  = NUMBER_WORDS[card.value] ?? String(card.value);
+    return (
+      `<div class="f7-card" style="--c:${color};">` +
+      `<div class="f7-band">${word}</div>` +
+      `<div class="f7-num">${card.value}</div>` +
+      `<div class="f7-band f7-band-bottom">${word}</div>` +
+      `</div>`
+    );
+  }
+  if (card.card_type === 'modifier') {
+    const isMult = card.modifier_type === 'multiply_2';
+    const chip   = isMult ? `×${card.value}` : `+${card.value}`;
+    const capTop = isMult ? 'The sum of your number cards' : 'Add to your final score';
+    return (
+      `<div class="f7-tcard f7-mod">` +
+      `<div class="f7-tcard-cap">${capTop}</div>` +
+      `<div class="f7-tcard-chip">${chip}</div>` +
+      `<div class="f7-tcard-cap">Modifier</div>` +
+      `</div>`
+    );
+  }
+  if (card.card_type === 'action') {
+    const variants = {
+      freeze:         ['f7-freeze', 'FREEZE', 'Play on an active player'],
+      flip_three:     ['f7-flip3', 'FLIP<br>THREE', 'Play on an active player'],
+      second_chance:  ['f7-second', 'SECOND<br>CHANCE', 'Save this card until needed'],
+    };
+    const [variantClass, label, caption] = variants[card.action_type] ?? ['f7-freeze', card.action_type, ''];
+    return (
+      `<div class="f7-tcard ${variantClass}">` +
+      `<div class="f7-tcard-cap">${caption}</div>` +
+      `<div class="f7-tcard-chip" style="font-size:0.6rem;">${label}</div>` +
+      `<div class="f7-tcard-cap">Instant Action</div>` +
+      `</div>`
+    );
+  }
+  return `<div class="f7-tcard">${cardLabel(card)}</div>`;
 }
 
 // =============================================================================

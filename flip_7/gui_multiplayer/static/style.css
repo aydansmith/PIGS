@@ -260,28 +260,10 @@ input[type="text"]:focus { border-color: var(--accent); }
   gap: .75rem;
 }
 .my-name  { font-weight: 700; font-size: 1.05rem; }
-.my-hand  { display: flex; flex-wrap: wrap; gap: .4rem; min-height: 2rem; align-items: center; }
+.my-hand  { display: flex; flex-wrap: wrap; gap: .4rem; min-height: 2rem; align-items: center; row-gap: .5rem; }
 .my-score { font-size: .9rem; color: var(--text-muted); }
 
 .action-buttons { display: flex; gap: .5rem; flex-wrap: wrap; }
-
-/* --- Card chips (in-hand display) ------------------------------------------ */
-
-.card-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 2.4rem;
-  height: 2.4rem;
-  padding: 0 .5rem;
-  border-radius: var(--radius-sm);
-  font-weight: 700;
-  font-size: .9rem;
-  border: 1px solid rgba(255,255,255,.1);
-}
-.card-chip.card-number   { background: #1e2e46; color: #a0c4ff; }
-.card-chip.card-modifier { background: #1e3a30; color: #80f0b8; }
-.card-chip.card-action   { background: #2e2040; color: #d0a8ff; }
 
 /* --- Card picker ------------------------------------------------------------ */
 
@@ -399,6 +381,102 @@ input[type="text"]:focus { border-color: var(--accent); }
   max-width: 90vw;
 }
 .action-waiting-banner.hidden { display: none; }
+
+/* --- Flip 7 physical card rendering (mirrors the Streamlit card_picker.py deck) --- */
+
+.f7-hand { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
+
+.f7-card {
+    --c: #999;
+    width: 56px;
+    height: 80px;
+    border-radius: 8px;
+    background: #f6efdd;
+    border: 2px solid var(--c);
+    box-shadow: 0 4px 10px -3px rgba(0,0,0,0.45), inset 0 0 0 3px rgba(255,255,255,0.35);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 2px;
+    flex: 0 0 auto;
+}
+.f7-card::before, .f7-card::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 8px;
+    height: 26px;
+    transform: translateY(-50%);
+    background: repeating-conic-gradient(from 90deg at 0% 50%, var(--c) 0deg 30deg, color-mix(in srgb, var(--c) 55%, #f6efdd) 30deg 60deg);
+    opacity: 0.85;
+}
+.f7-card::before { left: -2px; border-radius: 0 100% 100% 0 / 0 50% 50% 0; }
+.f7-card::after  { right: -2px; border-radius: 100% 0 0 100% / 50% 0 0 50%; transform: translateY(-50%) scaleX(-1); }
+
+.f7-band {
+    font-family: "American Typewriter", Georgia, serif;
+    font-size: 0.35rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--c);
+    background: #f6efdd;
+    padding: 1px 4px;
+    border-top: 1.5px solid var(--c);
+    border-bottom: 1.5px solid var(--c);
+    white-space: nowrap;
+}
+.f7-band-bottom { transform: rotate(180deg); }
+
+.f7-num {
+    font-family: "Avenir Next Condensed", Futura, "Century Gothic", sans-serif;
+    font-weight: 800;
+    font-size: 1.5rem;
+    color: var(--c);
+    line-height: 1;
+}
+
+.f7-tcard {
+    width: 56px;
+    height: 80px;
+    border-radius: 8px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 3px;
+    flex: 0 0 auto;
+    box-shadow: 0 4px 10px -3px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(255,255,255,0.25);
+    color: #2c2417;
+}
+.f7-tcard-cap {
+    font-family: -apple-system, sans-serif;
+    font-size: 0.27rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    text-align: center;
+    line-height: 1.15;
+    opacity: 0.75;
+}
+.f7-tcard-chip {
+    background: rgba(255,255,255,0.82);
+    border-radius: 5px;
+    padding: 2px 5px;
+    font-family: "Avenir Next Condensed", Futura, sans-serif;
+    font-weight: 800;
+    font-size: 0.8rem;
+    text-align: center;
+    line-height: 1.05;
+    color: #201a12;
+}
+.f7-mod    { background: linear-gradient(160deg, #f0b25e, #e0983a); }
+.f7-freeze { background: linear-gradient(160deg, #7dc7d9, #4fa3b8); }
+.f7-flip3  { background: linear-gradient(160deg, #f4d84a, #e2c02c); }
+.f7-second { background: linear-gradient(160deg, #ea6f5c, #d84f3c); }
 
 /* --- Responsive ------------------------------------------------------------- */
 
