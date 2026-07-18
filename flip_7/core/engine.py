@@ -615,6 +615,12 @@ class GameEngine:
             target_state.round_score = score_breakdown.final_score
             target_state.total_score += target_state.round_score
 
+            # If given to someone else, move the card from the drawer's hand
+            # to the target's, so it visually shows up with whoever it was
+            # actually applied to.
+            if original_player_id and original_player_id != target_player_id:
+                self._move_action_card_to_target(original_player_id, target_player_id, card)
+
             # Create description based on whether it was applied to self or opponent
             if original_name and original_name != target_name:
                 description = f"{original_name} froze {target_name} who banked {target_state.round_score} points"
@@ -637,6 +643,12 @@ class GameEngine:
             # Target player must take next 3 cards
             target_state.flip_three_active = True
             target_state.flip_three_count = 3
+
+            # If given to someone else, move the card from the drawer's hand
+            # to the target's, so it visually shows up with whoever it was
+            # actually applied to.
+            if original_player_id and original_player_id != target_player_id:
+                self._move_action_card_to_target(original_player_id, target_player_id, card)
 
             # If the target is not the current player, they need to take their turn next.
             current_player_id = self.game_state.current_round.current_player_id
@@ -684,17 +696,7 @@ class GameEngine:
 
                 # If card was given to someone else, move it from original player's hand to target's hand
                 if original_player_id and original_player_id != target_player_id:
-                    original_state = self.game_state.current_round.player_states[original_player_id]
-                    # Find the Second Chance card in original player's hand
-                    sc_card_in_hand = next(
-                        (c for c in original_state.cards_in_hand
-                         if isinstance(c, ActionCard) and c.action_type == ActionType.SECOND_CHANCE),
-                        None
-                    )
-                    if sc_card_in_hand:
-                        # Remove from original player's hand and add to target's hand
-                        original_state.cards_in_hand.remove(sc_card_in_hand)
-                        target_state.cards_in_hand.append(sc_card_in_hand)
+                    self._move_action_card_to_target(original_player_id, target_player_id, card)
 
                 # Create description based on whether it was applied to self or opponent
                 if original_name and original_name != target_name:
@@ -716,6 +718,24 @@ class GameEngine:
         # Second Chance (drawing player's turn is done).
         if self.game_state.current_round is not None:
             self._advance_turn()
+
+    def _move_action_card_to_target(
+        self, original_player_id: str, target_player_id: str, card: ActionCard
+    ) -> None:
+        """
+        Move an action card from the drawer's hand to the hand of whoever the
+        effect was actually applied to, so it visually shows up with them.
+        """
+        original_state = self.game_state.current_round.player_states[original_player_id]
+        target_state = self.game_state.current_round.player_states[target_player_id]
+        card_in_hand = next(
+            (c for c in original_state.cards_in_hand
+             if isinstance(c, ActionCard) and c.action_type == card.action_type),
+            None
+        )
+        if card_in_hand:
+            original_state.cards_in_hand.remove(card_in_hand)
+            target_state.cards_in_hand.append(card_in_hand)
 
     def _advance_turn(self) -> None:
         """

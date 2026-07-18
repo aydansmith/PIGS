@@ -562,10 +562,10 @@ class TestActionCardTargeting:
 
         # Deal Flip Three to Alice
         flip_three_card = ActionCard(action_type=ActionType.FLIP_THREE)
-        engine.deal_card_to_player(alice_id, flip_three_card)
+        dealt_card = engine.deal_card_to_player(alice_id, flip_three_card)
 
         # Alice applies it to Bob
-        engine.apply_action_card_effect(flip_three_card, bob_id, alice_id)
+        engine.apply_action_card_effect(dealt_card, bob_id, alice_id)
 
         # Check that Bob has Flip Three active, not Alice
         game_state = engine.game_state
@@ -575,6 +575,10 @@ class TestActionCardTargeting:
         assert not alice_state.flip_three_active
         assert bob_state.flip_three_active
         assert bob_state.flip_three_count == 3
+
+        # The card itself should show up in Bob's hand, not Alice's.
+        assert dealt_card not in alice_state.cards_in_hand
+        assert dealt_card in bob_state.cards_in_hand
 
     def test_flip_three_can_target_self(self):
         """Test that Flip Three can be applied to self."""
@@ -670,10 +674,10 @@ class TestActionCardTargeting:
 
         # Deal Freeze to Alice
         freeze_card = ActionCard(action_type=ActionType.FREEZE)
-        engine.deal_card_to_player(alice_id, freeze_card)
+        dealt_card = engine.deal_card_to_player(alice_id, freeze_card)
 
         # Alice freezes Bob
-        engine.apply_action_card_effect(freeze_card, bob_id, alice_id)
+        engine.apply_action_card_effect(dealt_card, bob_id, alice_id)
 
         # Check that Bob is frozen (stayed) and score is banked
         game_state = engine.game_state
@@ -682,6 +686,13 @@ class TestActionCardTargeting:
         assert bob_state.has_stayed
         assert bob_state.round_score == 12  # 7 + 5
         assert bob_state.total_score == 12
+
+        # The card itself should show up in Bob's hand, not Alice's, and
+        # shouldn't have thrown off the score calculation (still 12, not
+        # affected by the Freeze card landing in the hand).
+        alice_state = game_state.current_round.player_states[alice_id]
+        assert dealt_card not in alice_state.cards_in_hand
+        assert dealt_card in bob_state.cards_in_hand
 
     def test_freeze_can_target_self(self):
         """Test that Freeze can be applied to self."""
