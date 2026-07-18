@@ -153,6 +153,49 @@ class TestStartGame:
 
 
 # =============================================================================
+# Rematch (Play Again in the same room) tests
+# =============================================================================
+
+class TestRematch:
+    def test_non_host_returns_403(self):
+        game_id, p1, p2 = setup_game()
+        room_manager.get_engine(game_id).game_state.is_complete = True
+        res = client.post(f"/api/rooms/{game_id}/rematch", json={"player_id": p2})
+        assert res.status_code == 403
+
+    def test_unknown_room_returns_404(self):
+        res = client.post("/api/rooms/no-such-room/rematch", json={"player_id": "x"})
+        assert res.status_code == 404
+
+    def test_game_not_complete_returns_422(self):
+        game_id, p1, p2 = setup_game()
+        res = client.post(f"/api/rooms/{game_id}/rematch", json={"player_id": p1})
+        assert res.status_code == 422
+
+    def test_host_can_start_rematch_after_game_over(self):
+        game_id, p1, p2 = setup_game()
+        old_engine = room_manager.get_engine(game_id)
+        old_engine.game_state.is_complete = True
+
+        res = client.post(f"/api/rooms/{game_id}/rematch", json={"player_id": p1})
+        assert res.status_code == 200
+
+        new_engine = room_manager.get_engine(game_id)
+        assert new_engine is not old_engine
+        assert new_engine.game_state.is_complete is False
+        assert new_engine.game_state.current_round is not None
+        # Same roster carries over, in the same room.
+        assert {p.player_id for p in new_engine.game_state.players} == {p1, p2}
+
+    def test_rematch_before_any_game_started_returns_422(self):
+        game_id = create_room()
+        p1 = join(game_id, "Alice")
+        join(game_id, "Bob")
+        res = client.post(f"/api/rooms/{game_id}/rematch", json={"player_id": p1})
+        assert res.status_code == 422
+
+
+# =============================================================================
 # WebSocket connection tests
 # =============================================================================
 

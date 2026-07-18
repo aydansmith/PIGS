@@ -37,6 +37,8 @@ html, body {
 .screen { display: none; }
 .screen.active { display: flex; flex-direction: column; min-height: 100vh; }
 
+.hidden { display: none !important; }
+
 /* Modal overlays sit on top of the game screen without replacing it */
 .modal-overlay {
   position: fixed;
@@ -388,9 +390,9 @@ input[type="text"]:focus { border-color: var(--accent); }
 
 .f7-card {
     --c: #999;
-    width: 56px;
-    height: 80px;
-    border-radius: 8px;
+    width: 84px;
+    height: 120px;
+    border-radius: 12px;
     background: #f6efdd;
     border: 2px solid var(--c);
     box-shadow: 0 4px 10px -3px rgba(0,0,0,0.45), inset 0 0 0 3px rgba(255,255,255,0.35);
@@ -399,15 +401,15 @@ input[type="text"]:focus { border-color: var(--accent); }
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    padding: 3px 2px;
+    padding: 5px 3px;
     flex: 0 0 auto;
 }
 .f7-card::before, .f7-card::after {
     content: "";
     position: absolute;
     top: 50%;
-    width: 8px;
-    height: 26px;
+    width: 12px;
+    height: 39px;
     transform: translateY(-50%);
     background: repeating-conic-gradient(from 90deg at 0% 50%, var(--c) 0deg 30deg, color-mix(in srgb, var(--c) 55%, #f6efdd) 30deg 60deg);
     opacity: 0.85;
@@ -417,13 +419,13 @@ input[type="text"]:focus { border-color: var(--accent); }
 
 .f7-band {
     font-family: "American Typewriter", Georgia, serif;
-    font-size: 0.35rem;
+    font-size: 0.52rem;
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--c);
     background: #f6efdd;
-    padding: 1px 4px;
+    padding: 1px 6px;
     border-top: 1.5px solid var(--c);
     border-bottom: 1.5px solid var(--c);
     white-space: nowrap;
@@ -433,28 +435,28 @@ input[type="text"]:focus { border-color: var(--accent); }
 .f7-num {
     font-family: "Avenir Next Condensed", Futura, "Century Gothic", sans-serif;
     font-weight: 800;
-    font-size: 1.5rem;
+    font-size: 2.25rem;
     color: var(--c);
     line-height: 1;
 }
 
 .f7-tcard {
-    width: 56px;
-    height: 80px;
-    border-radius: 8px;
+    width: 84px;
+    height: 120px;
+    border-radius: 12px;
     position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    padding: 5px 3px;
+    padding: 8px 4px;
     flex: 0 0 auto;
     box-shadow: 0 4px 10px -3px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(255,255,255,0.25);
     color: #2c2417;
 }
 .f7-tcard-cap {
     font-family: -apple-system, sans-serif;
-    font-size: 0.27rem;
+    font-size: 0.4rem;
     font-weight: 700;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -464,11 +466,11 @@ input[type="text"]:focus { border-color: var(--accent); }
 }
 .f7-tcard-chip {
     background: rgba(255,255,255,0.82);
-    border-radius: 5px;
-    padding: 2px 5px;
+    border-radius: 7px;
+    padding: 3px 7px;
     font-family: "Avenir Next Condensed", Futura, sans-serif;
     font-weight: 800;
-    font-size: 0.8rem;
+    font-size: 1.2rem;
     text-align: center;
     line-height: 1.05;
     color: #201a12;

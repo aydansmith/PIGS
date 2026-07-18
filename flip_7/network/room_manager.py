@@ -131,6 +131,35 @@ class RoomManager:
         self.rooms[game_id] = engine
         return engine
 
+    def start_new_game_same_room(self, game_id: str) -> GameEngine:
+        """
+        Start a brand-new game in an existing room, reusing the same player roster.
+
+        Used for "Play Again" after a game ends, so players stay connected and
+        in the same room instead of being forced to create/join a new one.
+
+        Args:
+            game_id: The room to restart.
+
+        Returns:
+            The newly initialised GameEngine.
+
+        Raises:
+            KeyError: If game_id does not exist.
+            ValueError: If no game has been played yet, the current game isn't
+                complete, or there are fewer than 2 players.
+        """
+        if game_id not in self.rooms:
+            raise KeyError(f"Room {game_id} does not exist")
+
+        current_engine = self.rooms[game_id]
+        if current_engine is None or not current_engine.game_state.is_complete:
+            raise ValueError("Current game is not yet complete")
+
+        self.rooms[game_id] = None
+        self.pending_action[game_id] = None
+        return self.start_game(game_id)
+
     def get_engine(self, game_id: str) -> Optional[GameEngine]:
         """Return the GameEngine for a room, or None if the game hasn't started."""
         return self.rooms.get(game_id)

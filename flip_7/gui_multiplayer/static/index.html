@@ -139,7 +139,9 @@
       <h2>🎉 Game Over!</h2>
       <div id="game-over-winner" class="winner-display"></div>
       <div id="game-over-scores" class="score-list"></div>
-      <button class="btn btn-primary btn-full" onclick="resetToLobby()">Play Again</button>
+      <button id="rematch-btn" class="btn btn-primary btn-full hidden" onclick="sendRematch()">🔁 Play Again (Same Room)</button>
+      <div id="game-over-waiting" class="hint hidden">Waiting for the host to start a new game…</div>
+      <button class="btn btn-ghost btn-full" onclick="resetToLobby()">Leave Room</button>
     </div>
   </div>
 

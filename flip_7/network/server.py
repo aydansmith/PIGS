@@ -94,6 +94,29 @@ async def start_game(game_id: str, body: StartRequest):
     return {"ok": True}
 
 
+@app.post("/api/rooms/{game_id}/rematch")
+async def rematch(game_id: str, body: StartRequest):
+    """
+    Start a brand-new game in the same room after the previous one finished.
+
+    Only the host may call this. Keeps everyone connected to the same room
+    instead of forcing a new room to be created.
+    """
+    if not room_manager.room_exists(game_id):
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    if not room_manager.is_host(game_id, body.player_id):
+        raise HTTPException(status_code=403, detail="Only the host can start a rematch")
+
+    try:
+        room_manager.start_new_game_same_room(game_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+
+    await room_manager.broadcast_state(game_id, message_type="game_started")
+    return {"ok": True}
+
+
 # =============================================================================
 # WebSocket endpoint
 # =============================================================================

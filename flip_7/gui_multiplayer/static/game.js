@@ -114,11 +114,38 @@ async function joinGame(playerName, gameId) {
 }
 
 function copyRoomCode() {
-  navigator.clipboard.writeText(myGameId).then(() => {
-    const btn = document.querySelector('.room-code-box .btn-small');
+  const btn = document.querySelector('.room-code-box .btn-small');
+  const showCopied = () => {
+    if (!btn) return;
     btn.textContent = 'Copied!';
     setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
-  });
+  };
+
+  // navigator.clipboard only exists in secure contexts (HTTPS or localhost) -
+  // LAN play (e.g. launch_multiplayer.sh --host 0.0.0.0) is plain HTTP, so it's
+  // undefined there. Fall back to the classic textarea + execCommand approach.
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(myGameId).then(showCopied).catch(() => legacyCopyRoomCode(showCopied));
+  } else {
+    legacyCopyRoomCode(showCopied);
+  }
+}
+
+function legacyCopyRoomCode(onSuccess) {
+  const textarea = document.createElement('textarea');
+  textarea.value = myGameId;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand('copy');
+    onSuccess();
+  } catch (err) {
+    showError('lobby-error', 'Could not copy room code — please copy it manually.');
+  }
+  document.body.removeChild(textarea);
 }
 
 async function startGame() {
@@ -205,7 +232,8 @@ function handleMessage(msg) {
       break;
 
     case 'game_over':
-      renderGameOver(msg.state);
+      renderRoundEndingBoard(msg.state);
+      setTimeout(() => renderGameOver(msg.state), 3000);
       break;
 
     case 'action_pending':
@@ -546,7 +574,28 @@ function renderGameOver(state) {
     scoresEl.appendChild(row);
   });
 
+  const rematchBtn   = document.getElementById('rematch-btn');
+  const waitingNote  = document.getElementById('game-over-waiting');
+  rematchBtn.classList.toggle('hidden', !state.is_host);
+  if (waitingNote) waitingNote.classList.toggle('hidden', state.is_host);
+
   showScreen('screen-game-over');
+}
+
+async function sendRematch() {
+  try {
+    const res = await fetch(`/api/rooms/${myGameId}/rematch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_id: myPlayerId }),
+    });
+    if (!res.ok) {
+      const detail = (await res.json()).detail || res.statusText;
+      showError('game-error', `Could not start rematch: ${detail}`);
+    }
+  } catch (err) {
+    showError('game-error', `Error: ${err.message}`);
+  }
 }
 
 // =============================================================================
@@ -702,7 +751,7 @@ function cardHtml(card) {
     return (
       `<div class="f7-tcard ${variantClass}">` +
       `<div class="f7-tcard-cap">${caption}</div>` +
-      `<div class="f7-tcard-chip" style="font-size:0.6rem;">${label}</div>` +
+      `<div class="f7-tcard-chip" style="font-size:0.9rem;">${label}</div>` +
       `<div class="f7-tcard-cap">Instant Action</div>` +
       `</div>`
     );
