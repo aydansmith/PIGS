@@ -5,7 +5,7 @@ Game play component for active game tracking.
 import streamlit as st
 from flip_7.data.models import NumberCard, ActionCard, ActionType, RoundEndReason
 from flip_7.core.rules import calculate_score
-from flip_7.gui.components.card_picker import get_card_display
+from flip_7.gui.components.card_picker import get_card_html, get_status_pill_html, CARD_CSS
 from flip_7.data.persistence import GameRepository
 
 
@@ -124,6 +124,8 @@ def _show_round_complete(game_state, engine):
 
 def _show_active_game(game_state, engine):
     """Show the active game interface."""
+    st.markdown(CARD_CSS, unsafe_allow_html=True)
+
     current_round = game_state.current_round
 
     # Header
@@ -180,29 +182,28 @@ def _show_player_panel(player_info, player_state, engine, is_current_player: boo
     """Show a single player's panel."""
     # Determine status
     if player_state.is_busted:
-        status = "💥 BUSTED"
-        color = "red"
+        status, pill_kind = "💥 BUSTED", "busted"
     elif player_state.has_stayed:
-        status = "✋ STAYED"
-        color = "green"
+        status, pill_kind = "✋ STAYED", "stayed"
     elif player_state.flip_three_active:
         status = f"🔄 FLIP THREE ({player_state.flip_three_count} cards left)"
-        color = "orange"
+        pill_kind = "flip3"
     elif is_current_player:
-        status = "🎯 YOUR TURN"
-        color = "blue"
+        status, pill_kind = "🎯 YOUR TURN", "active"
     else:
-        status = "⏳ WAITING"
-        color = "gray"
+        status, pill_kind = "⏳ WAITING", "waiting"
 
     with st.container():
+        if is_current_player:
+            st.markdown('<div class="f7-active-bar"></div>', unsafe_allow_html=True)
+
         col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
 
         with col1:
             st.markdown(f"### {player_info.name}")
 
         with col2:
-            st.markdown(f"**Status:** :{color}[{status}]")
+            st.markdown(get_status_pill_html(pill_kind, status), unsafe_allow_html=True)
 
         with col3:
             if player_state.cards_in_hand:
@@ -216,8 +217,8 @@ def _show_player_panel(player_info, player_state, engine, is_current_player: boo
 
         # Show cards in hand
         if player_state.cards_in_hand:
-            card_displays = [get_card_display(card) for card in player_state.cards_in_hand]
-            st.markdown(f"**Cards:** {' '.join(card_displays)}")
+            cards_html = "".join(get_card_html(card) for card in player_state.cards_in_hand)
+            st.markdown(f'<div class="f7-hand">{cards_html}</div>', unsafe_allow_html=True)
 
             score_breakdown = calculate_score(player_state.cards_in_hand)
             breakdown_text = f"Base: {score_breakdown.base_score}"
