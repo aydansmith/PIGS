@@ -73,6 +73,30 @@
 
     <div class="game-body">
 
+      <!-- =====================================================================
+           Scoreboard card — sits above Opponents like any other board card.
+           Tabs switch between this game's live standings and the cross-game
+           win tally for the room. At round-end / game-over it grows in place
+           to surface the next action instead of handing off to a separate
+           screen or overlay.
+           ===================================================================== -->
+      <section>
+        <div id="scoreboard-card" class="scoreboard-card">
+          <div class="scoreboard-head">
+            <span class="scoreboard-title">🏆 Scoreboard <span id="scoreboard-leader" class="leader"></span></span>
+            <div class="picker-tabs">
+              <button id="scoreboard-tab-this-game" class="tab-btn active" onclick="showScoreboardTab('this-game')">This Game</button>
+              <button id="scoreboard-tab-overall" class="tab-btn hidden" onclick="showScoreboardTab('overall')">Overall</button>
+            </div>
+          </div>
+
+          <div id="scoreboard-panel-this-game" class="scoreboard-panel active"></div>
+          <div id="scoreboard-panel-overall" class="scoreboard-panel"></div>
+
+          <div id="scoreboard-actions" class="scoreboard-actions"></div>
+        </div>
+      </section>
+
       <!-- Opponents -->
       <section class="opponents-section">
         <h3 class="section-label">Opponents</h3>
@@ -91,47 +115,6 @@
 
     <!-- "Waiting for X to choose a target" overlay shown to non-owners -->
     <div id="action-waiting-banner" class="action-waiting-banner hidden"></div>
-
-    <!-- Dims the board only while the sheet is fully expanded -->
-    <div id="sheet-scrim" class="sheet-scrim"></div>
-
-    <!-- =====================================================================
-         Standings / history bottom sheet — always present once a game has
-         started. Peek bar shows live standings; drag/tap to expand into
-         full standings, round history, cross-game tracking, and (when the
-         round/game ends) the actions that used to live on separate screens.
-         ===================================================================== -->
-    <div id="sheet" class="sheet">
-      <div id="sheet-peek" class="sheet-peek">
-        <div class="sheet-handle"></div>
-        <div class="peek-row">
-          <div id="peek-scores" class="peek-scores"></div>
-          <span class="peek-chev">▲</span>
-        </div>
-        <div id="peek-alert" class="peek-alert hidden"></div>
-      </div>
-
-      <div class="sheet-scroll">
-        <div id="sheet-gameover-card" class="sheet-gameover hidden"></div>
-
-        <div id="sheet-games-section" class="games-section hidden">
-          <h3 class="section-label">Overall Standings <span class="section-hint">— games won this room</span></h3>
-          <div id="sheet-tally-list" class="score-list"></div>
-        </div>
-
-        <div>
-          <h3 class="section-label">This Game</h3>
-          <div id="sheet-standings-list" class="score-list"></div>
-        </div>
-
-        <div>
-          <h3 class="section-label">Round History</h3>
-          <div id="sheet-history-list" class="history-list"></div>
-        </div>
-      </div>
-
-      <div id="sheet-footer" class="sheet-footer hidden"></div>
-    </div>
   </div>
 
   <!-- =====================================================================

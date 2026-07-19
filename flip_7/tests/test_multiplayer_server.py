@@ -514,6 +514,49 @@ class TestActionCards:
             msg = ws.receive_json()
             assert msg["type"] == "error"
 
+    def test_deal_card_while_action_pending_is_rejected(self):
+        """
+        Drawing again before resolving a pending action card must be
+        rejected — otherwise the drawer could bust on a duplicate before a
+        held Second Chance (or a Flip Three's forced draws) ever takes
+        effect, since that effect only applies once the target is chosen.
+        """
+        game_id, p1, _ = setup_game()
+        stack_deck(game_id, ActionCard(action_type=ActionType.SECOND_CHANCE))
+
+        with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws:
+            ws.receive_json()
+            ws.send_json({"type": "deal_card"})
+            ws.receive_json()  # action_pending
+
+            hand_before = len(
+                room_manager.get_engine(game_id).game_state
+                .current_round.player_states[p1].cards_in_hand
+            )
+
+            ws.send_json({"type": "deal_card"})
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+
+            hand_after = len(
+                room_manager.get_engine(game_id).game_state
+                .current_round.player_states[p1].cards_in_hand
+            )
+            assert hand_after == hand_before  # no extra card was dealt
+
+    def test_stay_while_action_pending_is_rejected(self):
+        game_id, p1, _ = setup_game()
+        stack_deck(game_id, ActionCard(action_type=ActionType.FREEZE))
+
+        with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws:
+            ws.receive_json()
+            ws.send_json({"type": "deal_card"})
+            ws.receive_json()  # action_pending
+
+            ws.send_json({"type": "stay"})
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+
 
 # =============================================================================
 # Stay and round end tests

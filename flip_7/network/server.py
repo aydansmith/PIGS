@@ -229,6 +229,15 @@ async def _handle_deal_card(
     ):
         raise ValueError("It is not your turn")
 
+    # An action card's effect (e.g. Second Chance's has_second_chance flag,
+    # Flip Three's forced-draw obligation) isn't applied until the owner
+    # picks a target via apply_action. current_player_id doesn't advance
+    # until then either, so without this guard the same player could draw
+    # again before that resolves — busting on a duplicate with a Second
+    # Chance still sitting unapplied in their hand.
+    if room_manager.pending_action.get(game_id):
+        raise ValueError("Resolve the pending action card before drawing again")
+
     drawn_card = engine.deal_card_to_player(player_id)
 
     if isinstance(drawn_card, ActionCard):
@@ -290,6 +299,11 @@ async def _handle_stay(
         and current_round.current_player_id != player_id
     ):
         raise ValueError("It is not your turn")
+
+    # Same reasoning as _handle_deal_card: staying before the pending action
+    # card's target is chosen would leave it stuck unresolved.
+    if room_manager.pending_action.get(game_id):
+        raise ValueError("Resolve the pending action card before staying")
 
     engine.player_stay(player_id)
     await room_manager.broadcast_state(game_id, _infer_message_type(engine))
