@@ -908,4 +908,31 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Enter') handleJoinOrCreate();
     });
   });
+
+  paintFeltGrain();
 });
+
+/**
+ * Procedural fabric grain for the felt table background — generates a small
+ * noise tile on an off-screen canvas and applies it as a repeating CSS
+ * background on #grainLayer, instead of shipping an image asset.
+ */
+function paintFeltGrain() {
+  const w = 160, h = 160;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+
+  const imageData = ctx.createImageData(w, h);
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    const v = 128 + (Math.random() - 0.5) * 90;
+    imageData.data[i] = v;
+    imageData.data[i + 1] = v;
+    imageData.data[i + 2] = v;
+    imageData.data[i + 3] = 255;
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  document.getElementById('grainLayer').style.backgroundImage = `url(${canvas.toDataURL()})`;
+}

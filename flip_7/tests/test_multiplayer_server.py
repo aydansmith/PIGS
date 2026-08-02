@@ -505,6 +505,111 @@ class TestActionCards:
             assert msg1["type"] in ("state_update", "round_ended", "game_over")
             assert msg2["type"] in ("state_update", "round_ended", "game_over")
 
+    def test_second_second_chance_with_no_eligible_target_is_auto_discarded(self):
+        """
+        If the drawer already holds a Second Chance and every other player
+        has stayed/busted, there's no legitimate target for a second one.
+        The server should discard it and let the drawer keep going, rather
+        than leaving them stuck with an action_pending that has no valid
+        option to pick.
+        """
+        game_id, p1, p2 = setup_game()
+
+        with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws1, \
+             client.websocket_connect(f"/ws/{game_id}/{p2}") as ws2:
+            ws1.receive_json()
+            ws2.receive_json()
+
+            # P1 draws a Second Chance and keeps it.
+            stack_deck(game_id, ActionCard(action_type=ActionType.SECOND_CHANCE))
+            ws1.send_json({"type": "deal_card"})
+            ws1.receive_json()  # action_pending
+            ws2.receive_json()  # action_pending
+            ws1.send_json({"type": "apply_action", "target_player_id": p1})
+            ws1.receive_json()  # state_update — turn advances to P2
+            ws2.receive_json()
+
+            # P2 stays, leaving P1 as the only active player.
+            ws2.send_json({"type": "stay"})
+            ws1.receive_json()  # state_update — turn advances back to P1
+            ws2.receive_json()
+
+            # P1 draws a second Second Chance. No eligible target exists:
+            # P1 already holds one, and P2 has stayed.
+            stack_deck(game_id, ActionCard(action_type=ActionType.SECOND_CHANCE))
+            ws1.send_json({"type": "deal_card"})
+            msg1 = ws1.receive_json()
+            msg2 = ws2.receive_json()
+
+            assert msg1["type"] != "action_pending"
+            assert msg2["type"] != "action_pending"
+
+            p1_state = msg1["state"]["current_round"]["player_states"][p1]
+            assert p1_state["has_second_chance"] is True  # original one untouched
+            sc_count = sum(
+                1 for c in p1_state["cards_in_hand"]
+                if c.get("card_type") == "action" and c.get("action_type") == "second_chance"
+            )
+            assert sc_count == 1  # the second one was discarded, not kept
+
+            # P1's turn should continue uninterrupted — they can draw again.
+            ws1.send_json({"type": "deal_card"})
+            msg = ws1.receive_json()
+            assert msg["type"] != "error"
+
+    def test_second_chance_discarded_when_every_active_player_already_has_one(self):
+        """
+        Same as above, but P2 is still active (not stayed) and holds their
+        own Second Chance too — not just the drawer. Offering it to P2 would
+        silently no-op in the engine (target already has one, so nothing is
+        set and the card never moves), which looks identical to the original
+        stuck-card bug. Both cases must be excluded from eligible_targets.
+        """
+        game_id, p1, p2 = setup_game()
+
+        with client.websocket_connect(f"/ws/{game_id}/{p1}") as ws1, \
+             client.websocket_connect(f"/ws/{game_id}/{p2}") as ws2:
+            ws1.receive_json()
+            ws2.receive_json()
+
+            # P1 draws a Second Chance and keeps it.
+            stack_deck(game_id, ActionCard(action_type=ActionType.SECOND_CHANCE))
+            ws1.send_json({"type": "deal_card"})
+            ws1.receive_json()  # action_pending
+            ws2.receive_json()  # action_pending
+            ws1.send_json({"type": "apply_action", "target_player_id": p1})
+            ws1.receive_json()  # state_update — turn advances to P2
+            ws2.receive_json()
+
+            # P2 draws their own Second Chance and keeps it too. Both players
+            # are now active and already hold one.
+            stack_deck(game_id, ActionCard(action_type=ActionType.SECOND_CHANCE))
+            ws2.send_json({"type": "deal_card"})
+            ws1.receive_json()  # action_pending
+            ws2.receive_json()  # action_pending
+            ws2.send_json({"type": "apply_action", "target_player_id": p2})
+            ws1.receive_json()  # state_update — turn advances back to P1
+            ws2.receive_json()
+
+            # P1 draws a third Second Chance. Neither P1 (self) nor P2
+            # (opponent, but already holds one) is a legitimate target.
+            stack_deck(game_id, ActionCard(action_type=ActionType.SECOND_CHANCE))
+            ws1.send_json({"type": "deal_card"})
+            msg1 = ws1.receive_json()
+            msg2 = ws2.receive_json()
+
+            assert msg1["type"] != "action_pending"
+            assert msg2["type"] != "action_pending"
+
+            state = msg1["state"]["current_round"]["player_states"]
+            assert state[p1]["has_second_chance"] is True
+            assert state[p2]["has_second_chance"] is True
+            sc_count_p1 = sum(
+                1 for c in state[p1]["cards_in_hand"]
+                if c.get("card_type") == "action" and c.get("action_type") == "second_chance"
+            )
+            assert sc_count_p1 == 1  # the third card was discarded
+
     def test_apply_action_without_pending_returns_error(self):
         game_id, p1, _ = setup_game()
 

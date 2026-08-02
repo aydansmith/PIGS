@@ -15,7 +15,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, stat
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from flip_7.data.models import ActionCard, NumberCard
+from flip_7.data.models import ActionCard, ActionType, NumberCard
 from flip_7.data.persistence import deserialize_card
 from flip_7.network.room_manager import RoomManager
 
@@ -245,11 +245,27 @@ async def _handle_deal_card(
         current_round = engine.game_state.current_round
         eligible = []
         if current_round is not None:
+            is_second_chance = drawn_card.action_type == ActionType.SECOND_CHANCE
+            # A Second Chance can't go to anyone who already holds one — not
+            # the drawer (apply_action_card_effect rejects self-targeting a
+            # second one) and not an opponent either (the engine would just
+            # silently no-op: it never sets a second flag or moves the card,
+            # leaving it stuck in the drawer's hand with no error raised).
             eligible = [
                 {"player_id": pid, "player_name": ps.name}
                 for pid, ps in current_round.player_states.items()
                 if not ps.has_stayed and not ps.is_busted
+                and not (is_second_chance and ps.has_second_chance)
             ]
+
+            if not eligible:
+                # No one can legitimately receive this card (everyone active
+                # already holds one, or every other player has stayed/busted)
+                # — discard it and let the drawer continue their turn instead
+                # of leaving them stuck with no valid target to pick.
+                engine.discard_action_card(drawn_card, player_id)
+                await room_manager.broadcast_state(game_id, _infer_message_type(engine))
+                return
 
         room_manager.pending_action[game_id] = {
             "card": drawn_card,
